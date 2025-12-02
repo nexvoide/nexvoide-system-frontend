@@ -1,4 +1,4 @@
-import { supabase, TABLES, isSupabaseConfigured } from './supabase.js';
+import { supabase, TABLES, isSupabaseConfigured, initializeSupabase, isSupabaseReady } from './supabase.js';
 
 // Helper to handle Supabase errors
 const handleError = (error, operation) => {
@@ -43,49 +43,48 @@ export const dbProjects = {
       const data = localStorageGet(TABLES.projects);
       return Array.isArray(data) ? data : [];
     }
+    
+    // Ensure Supabase is connected (fast check)
+    await initializeSupabase();
+    
     try {
-      // Only get non-archived projects (archived projects are in archived_projects table)
-      // IMPORTANT: Pulled-forward projects should always be included (they're not archived)
-      // Try with archived filter first, fallback to all if column doesn't exist
-      let { data, error } = await supabase
+      // Fast query with 5 second timeout (reduced from 15s)
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Query timeout after 5 seconds')), 5000)
+      );
+      
+      // Only get non-archived projects
+      const queryPromise = supabase
         .from(TABLES.projects)
         .select('*')
-        .eq('archived', false) // Only get non-archived projects (includes pulled-forward)
+        .eq('archived', false)
         .order('created_at', { ascending: false });
       
-      // If archived column doesn't exist, get all projects but warn user
+      let result = await Promise.race([queryPromise, timeoutPromise]);
+      let { data, error } = result || {};
+      
+      // If archived column doesn't exist, get all projects
       if (error && (error.message?.includes('column') || error.message?.includes('does not exist') || error.code === '42703')) {
-        console.error('❌ archived column not found in projects table!');
-        console.error('⚠️ Getting all projects (including archived). Please run supabase-add-archived-field.sql');
-        const result = await supabase
+        const fallbackPromise = supabase
           .from(TABLES.projects)
           .select('*')
           .order('created_at', { ascending: false });
-        if (result.error) {
-          console.error('Supabase projects getAll error:', result.error);
-          throw result.error;
-        }
+        result = await Promise.race([fallbackPromise, timeoutPromise]);
+        if (result.error) throw result.error;
         data = result.data;
         error = null;
       } else if (error) {
-        console.error('Supabase projects getAll error:', error);
         throw error;
       }
-      const supabaseData = Array.isArray(data) ? data : [];
-      console.log('✅ Loaded projects from Supabase:', supabaseData.length, '(excluding archived)');
       
-      // Always use Supabase data (even if empty) - don't fall back to cache
-      // If Supabase returns empty, it means all projects are archived (which is correct)
-      // Sync cache with Supabase data to keep it fresh
+      const supabaseData = Array.isArray(data) ? data : [];
       localStorageSet(TABLES.projects, supabaseData);
       return supabaseData;
     } catch (error) {
-      console.warn('Supabase getAll projects failed, using localStorage:', error);
-      // Only use localStorage as fallback when Supabase fails
+      console.error('Failed to load projects from Supabase:', error.message);
+      // Return cached data on error (don't block UI)
       const data = localStorageGet(TABLES.projects);
-      // Filter out archived projects
-      const filtered = Array.isArray(data) ? data.filter(p => !p.archived) : [];
-      return filtered;
+      return Array.isArray(data) ? data.filter(p => !p.archived) : [];
     }
   },
 
@@ -295,23 +294,32 @@ export const dbEmployees = {
     if (!isSupabaseConfigured) {
       return localStorageGet(TABLES.employees);
     }
+    
+    // Ensure Supabase is connected (fast check)
+    await initializeSupabase();
+    
     try {
-      // Optimized query: select only needed columns and use index
-      const { data, error } = await supabase
+      // Fast query with 5 second timeout (reduced from 15s)
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Query timeout after 5 seconds')), 5000)
+      );
+      
+      const queryPromise = supabase
         .from(TABLES.employees)
         .select('id, name, role, email, phone, bank_name, bank_account, avatar, notes, active, rate_type, rate_value, street, city, state, country, zip, created_at, updated_at')
         .order('created_at', { ascending: false });
-      if (error) {
-        console.error('Supabase employees getAll error:', error);
-        throw error;
-      }
+      
+      const result = await Promise.race([queryPromise, timeoutPromise]);
+      const { data, error } = result || {};
+      
+      if (error) throw error;
+      
       const supabaseData = Array.isArray(data) ? data : [];
-      // Always sync cache with Supabase data (even if empty)
-      // This ensures cache doesn't have stale data after table recreation
       localStorageSet(TABLES.employees, supabaseData);
       return supabaseData;
     } catch (error) {
-      console.warn('Supabase getAll employees failed, using localStorage:', error);
+      console.error('Failed to load employees from Supabase:', error.message);
+      // Return cached data on error (don't block UI)
       return localStorageGet(TABLES.employees);
     }
   },
@@ -565,19 +573,31 @@ export const dbProfiles = {
     if (!isSupabaseConfigured) {
       return localStorageGet(TABLES.profiles);
     }
+    
+    // Ensure Supabase is connected (fast check)
+    await initializeSupabase();
+    
     try {
-      // Optimized query: select only needed columns and use index
-      const { data, error } = await supabase
+      // Fast query with 5 second timeout
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Query timeout after 5 seconds')), 5000)
+      );
+      
+      const queryPromise = supabase
         .from(TABLES.profiles)
         .select('id, name, service, platform, username, logo, notes, created_at, updated_at')
         .order('created_at', { ascending: false });
+      
+      const result = await Promise.race([queryPromise, timeoutPromise]);
+      const { data, error } = result || {};
+      
       if (error) throw error;
+      
       const supabaseData = Array.isArray(data) ? data : [];
-      // Always sync to localStorage, even if empty (user may have deleted everything)
       localStorageSet(TABLES.profiles, supabaseData);
       return supabaseData;
     } catch (error) {
-      console.warn('Supabase getAll profiles failed, using localStorage:', error);
+      console.error('Failed to load profiles from Supabase:', error.message);
       return localStorageGet(TABLES.profiles);
     }
   },
@@ -757,19 +777,31 @@ export const dbAgencies = {
     if (!isSupabaseConfigured) {
       return localStorageGet(TABLES.agencies);
     }
+    
+    // Ensure Supabase is connected (fast check)
+    await initializeSupabase();
+    
     try {
-      // Optimized query: select only needed columns and use index
-      const { data, error } = await supabase
+      // Fast query with 5 second timeout
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Query timeout after 5 seconds')), 5000)
+      );
+      
+      const queryPromise = supabase
         .from(TABLES.agencies)
         .select('id, name, service, logo, contact, email, street, city, state, country, zip, active, notes, created_at, updated_at')
         .order('created_at', { ascending: false });
+      
+      const result = await Promise.race([queryPromise, timeoutPromise]);
+      const { data, error } = result || {};
+      
       if (error) throw error;
+      
       const supabaseData = Array.isArray(data) ? data : [];
-      // Always sync to localStorage, even if empty (user may have deleted everything)
       localStorageSet(TABLES.agencies, supabaseData);
       return supabaseData;
     } catch (error) {
-      console.warn('Supabase getAll agencies failed, using localStorage:', error);
+      console.error('Failed to load agencies from Supabase:', error.message);
       return localStorageGet(TABLES.agencies);
     }
   },
@@ -879,19 +911,31 @@ export const dbBrands = {
     if (!isSupabaseConfigured) {
       return localStorageGet(TABLES.brands);
     }
+    
+    // Ensure Supabase is connected (fast check)
+    await initializeSupabase();
+    
     try {
-      // Optimized query: select only needed columns
-      const { data, error } = await supabase
+      // Fast query with 5 second timeout
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Query timeout after 5 seconds')), 5000)
+      );
+      
+      const queryPromise = supabase
         .from(TABLES.brands)
         .select('id, name, service, logo, contact, email, street, city, state, country, zip, active, notes, created_at, updated_at')
         .order('created_at', { ascending: false });
+      
+      const result = await Promise.race([queryPromise, timeoutPromise]);
+      const { data, error } = result || {};
+      
       if (error) throw error;
+      
       const supabaseData = Array.isArray(data) ? data : [];
-      // Always sync to localStorage, even if empty (user may have deleted everything)
       localStorageSet(TABLES.brands, supabaseData);
       return supabaseData;
     } catch (error) {
-      console.warn('Supabase getAll brands failed, using localStorage:', error);
+      console.error('Failed to load brands from Supabase:', error.message);
       return localStorageGet(TABLES.brands);
     }
   },
@@ -1213,65 +1257,53 @@ export const dbUsers = {
     if (!isSupabaseConfigured) {
       return localStorageGet('users');
     }
+    
+    // Ensure Supabase is connected (fast check)
+    await initializeSupabase();
+    
     try {
-      // Optimized query: select only needed columns for user cards/list
-      // Use limit to prevent loading too many users at once (if you have hundreds)
-      const { data, error } = await supabase
+      // Fast query with 5 second timeout
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Query timeout after 5 seconds')), 5000)
+      );
+      
+      const queryPromise = supabase
         .from('users')
         .select('id, username, name, email, role, avatar, active, service, user_id, created_at, updated_at')
         .order('created_at', { ascending: false })
-        .limit(1000); // Reasonable limit for user list
+        .limit(1000);
       
-      if (error) {
-        console.error('Supabase users getAll error:', error);
-        throw error;
-      }
+      const result = await Promise.race([queryPromise, timeoutPromise]);
+      const { data, error } = result || {};
+      
+      if (error) throw error;
       
       const supabaseData = Array.isArray(data) ? data : [];
-      // Sync to localStorage immediately for fast subsequent loads
       localStorageSet('users', supabaseData);
       return supabaseData;
     } catch (error) {
-      console.warn('Supabase getAll users failed, using localStorage:', error);
-      // Return cached data immediately on error
+      console.error('Failed to load users from Supabase:', error.message);
+      // Return cached data on error (don't block UI)
       return localStorageGet('users');
     }
   },
 
   async getByUsername(username) {
-    if (!isSupabaseConfigured) {
-      const all = localStorageGet('users');
-      const found = all.find(u => (u.username || '').toLowerCase() === username.toLowerCase()) || null;
-      return found;
+    // Always require Supabase for authentication - no localStorage fallback
+    if (!isSupabaseConfigured || !supabase) {
+      throw new Error('Supabase is not configured. Please check your environment variables.');
     }
     
-    // Try localStorage first (instant, no network)
-    const cached = localStorageGet('users');
-    if (Array.isArray(cached) && cached.length > 0) {
-      const found = cached.find(u => (u.username || '').toLowerCase() === username.toLowerCase());
-      if (found) {
-        // Return cached immediately, refresh in background
-        supabase
-          .from('users')
-          .select('*')
-          .eq('username', username)
-          .maybeSingle()
-          .then(({ data }) => {
-            if (data) {
-              // Update cache silently
-              const updated = cached.map(u => u.id === data.id ? data : u);
-              localStorageSet('users', updated);
-            }
-          })
-          .catch(() => {});
-        return found;
-      }
+    // Ensure Supabase is connected before querying
+    const isReady = await initializeSupabase();
+    if (!isReady) {
+      throw new Error('Supabase connection failed. Please check your network connection and try again.');
     }
     
     try {
       // Add timeout to fail fast if network is slow
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Query timeout')), 3000)
+        setTimeout(() => reject(new Error('Query timeout - Supabase connection is slow')), 10000)
       );
       
       // First try exact match (fastest)
@@ -1282,20 +1314,32 @@ export const dbUsers = {
         .maybeSingle();
       
       const result = await Promise.race([queryPromise, timeoutPromise]);
-      const { data: exactData } = result || {};
+      const { data: exactData, error: exactError } = result || {};
+      
+      if (exactError) {
+        // PGRST116 = not found, which is OK (user doesn't exist)
+        if (exactError.code === 'PGRST116') {
+          return null;
+        }
+        // Other errors should be thrown
+        throw exactError;
+      }
       
       if (exactData) {
-        // Update cache
+        // Update cache for faster subsequent loads (but don't use for auth)
+        const cached = localStorageGet('users');
         if (Array.isArray(cached)) {
           const updated = cached.find(u => u.id === exactData.id) 
             ? cached.map(u => u.id === exactData.id ? exactData : u)
             : [exactData, ...cached];
           localStorageSet('users', updated);
+        } else {
+          localStorageSet('users', [exactData]);
         }
         return exactData;
       }
       
-      // If exact match fails, try case-insensitive search (still efficient with ILIKE)
+      // If exact match fails, try case-insensitive search
       const caseQueryPromise = supabase
         .from('users')
         .select('*')
@@ -1303,28 +1347,35 @@ export const dbUsers = {
         .maybeSingle();
       
       const caseResult = await Promise.race([caseQueryPromise, timeoutPromise]);
-      const { data: caseInsensitiveData } = caseResult || {};
+      const { data: caseInsensitiveData, error: caseError } = caseResult || {};
+      
+      if (caseError) {
+        if (caseError.code === 'PGRST116') {
+          return null;
+        }
+        throw caseError;
+      }
       
       if (caseInsensitiveData) {
         // Update cache
+        const cached = localStorageGet('users');
         if (Array.isArray(cached)) {
           const updated = cached.find(u => u.id === caseInsensitiveData.id) 
             ? cached.map(u => u.id === caseInsensitiveData.id ? caseInsensitiveData : u)
             : [caseInsensitiveData, ...cached];
           localStorageSet('users', updated);
+        } else {
+          localStorageSet('users', [caseInsensitiveData]);
         }
         return caseInsensitiveData;
       }
       
-      // Fallback to localStorage (fast, no network call)
-      const all = localStorageGet('users');
-      const found = all.find(u => (u.username || '').toLowerCase() === username.toLowerCase()) || null;
-      return found;
+      // User not found
+      return null;
     } catch (error) {
-      // On timeout or error, use localStorage
-      const all = localStorageGet('users');
-      const found = all.find(u => (u.username || '').toLowerCase() === username.toLowerCase()) || null;
-      return found;
+      // Re-throw error - don't fallback to localStorage for authentication
+      console.error('Supabase query error:', error);
+      throw new Error(`Failed to query user: ${error.message}`);
     }
   },
 

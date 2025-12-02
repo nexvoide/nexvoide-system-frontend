@@ -235,20 +235,13 @@ export default function Login({ onLogin }) {
     setLoading(true);
 
     try {
-      console.log('🚀 Login form submitted');
-      console.log('📝 Username:', username);
-      console.log('🔐 Password provided:', password ? 'Yes' : 'No');
-      
       const user = await login(username, password);
       if (user) {
-        console.log('✅ Login successful, user:', user);
         onLogin(user);
       } else {
-        console.error('❌ Login returned no user');
         setError("Invalid username or password");
       }
     } catch (err) {
-      console.error('❌ Login error:', err);
       setError(err.message || "Login failed. Please try again.");
     } finally {
       setLoading(false);

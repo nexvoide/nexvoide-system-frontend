@@ -64,17 +64,8 @@ export default function HR() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
 
-  // Refresh employees on mount to ensure we have latest data
-  useEffect(() => {
-    const refresh = async () => {
-      try {
-        await refreshEmployees();
-      } catch (error) {
-        console.error("Failed to refresh employees on mount:", error);
-      }
-    };
-    refresh();
-  }, []); // Only run on mount
+  // Don't refresh on mount - data already loaded in initialize()
+  // Only refresh if explicitly needed (e.g., after create/update)
 
   // Ensure employees is always an array
   const safeEmployees = Array.isArray(employees) ? employees : [];

@@ -29,7 +29,17 @@ function Shell() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Load user on mount
+  // Initialize app (Supabase init happens in background, doesn't block)
+  useEffect(() => {
+    // Start Supabase init in background (non-blocking)
+    import('../lib/supabase.js').then(({ initializeSupabase }) => {
+      initializeSupabase().catch(() => {}); // Don't block on errors
+    });
+    // Initialize app immediately (uses cache first, then Supabase)
+    initialize();
+  }, [initialize]);
+
+  // Load user on mount (after Supabase init)
   useEffect(() => {
     try {
       const savedUser = loadUser();
@@ -52,11 +62,6 @@ function Shell() {
       setShowLogin(false);
     }
   }, [user, userRole]);
-
-  // Initialize Supabase on mount
-  useEffect(() => {
-    initialize();
-  }, [initialize]);
 
   useEffect(() => {
     // initialize from localStorage

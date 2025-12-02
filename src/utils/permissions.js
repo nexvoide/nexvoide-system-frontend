@@ -196,22 +196,55 @@ export const NAV_ITEMS = {
 /**
  * Normalize roles to array format (backward compatible with single role strings)
  * @param {string|string[]|null} roles - Single role string, array of roles, or null
+ * @param {string} defaultValue - Default role to use if roles is null/empty (default: 'admin')
  * @returns {string[]} Array of role strings
  */
-export function normalizeRoles(roles) {
-  if (!roles) return [];
-  if (Array.isArray(roles)) return roles.filter(Boolean);
+export function normalizeRoles(roles, defaultValue = 'admin') {
+  if (!roles) return defaultValue ? [defaultValue] : [];
+  if (Array.isArray(roles)) {
+    const filtered = roles.filter(Boolean);
+    return filtered.length > 0 ? filtered : (defaultValue ? [defaultValue] : []);
+  }
   if (typeof roles === 'string') {
     // Try to parse as JSON array first (for stored multi-role format)
     try {
       const parsed = JSON.parse(roles);
-      if (Array.isArray(parsed)) return parsed.filter(Boolean);
+      if (Array.isArray(parsed)) {
+        const filtered = parsed.filter(Boolean);
+        return filtered.length > 0 ? filtered : (defaultValue ? [defaultValue] : []);
+      }
     } catch {
       // Not JSON, treat as single role string
     }
     return [roles];
   }
-  return [];
+  return defaultValue ? [defaultValue] : [];
+}
+
+/**
+ * Get the primary role from a user's roles (highest priority role)
+ * @param {string|string[]|null} roles - Single role string, array of roles, or null
+ * @param {string} defaultValue - Default role if no roles found (default: 'admin')
+ * @returns {string} Primary role string
+ */
+export function getPrimaryRole(roles, defaultValue = 'admin') {
+  const normalizedRoles = normalizeRoles(roles, defaultValue);
+  if (normalizedRoles.length === 0) return defaultValue || 'admin';
+  
+  // Role priority (higher number = higher priority)
+  const rolePriority = { 
+    admin: 5, 
+    manager: 4, 
+    teamlead: 3, 
+    employee: 2, 
+    client: 1 
+  };
+  
+  return normalizedRoles.reduce((highest, role) => {
+    const currentPriority = rolePriority[role] || 0;
+    const highestPriority = rolePriority[highest] || 0;
+    return currentPriority > highestPriority ? role : highest;
+  }, normalizedRoles[0]);
 }
 
 /**

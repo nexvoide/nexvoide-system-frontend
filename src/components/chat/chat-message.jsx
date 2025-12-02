@@ -5,7 +5,7 @@ import { cn } from "../../lib/utils";
 import { parseMessageParts } from "../../utils/chatUtils";
 import { useAppStore } from "../../stores/appStore.js";
 import Avatar from "../Avatar";
-import { ROLE_LABELS } from "../../utils/permissions";
+import { ROLE_LABELS, normalizeRoles, getPrimaryRole } from "../../utils/permissions";
 
 export const ChatMessageItem = ({ 
   message, 
@@ -36,16 +36,9 @@ export const ChatMessageItem = ({
     
     // Get role
     if (messageUser.role) {
-      let roles = messageUser.role;
-      if (typeof roles === 'string') {
-        try {
-          roles = roles.startsWith('[') ? JSON.parse(roles) : [roles];
-        } catch {
-          roles = [roles];
-        }
-      }
-      if (Array.isArray(roles) && roles.length > 0) {
-        const primaryRole = roles[0]?.toLowerCase();
+      const roles = normalizeRoles(messageUser.role);
+      if (roles.length > 0) {
+        const primaryRole = getPrimaryRole(roles)?.toLowerCase();
         role = ROLE_LABELS[primaryRole] || primaryRole || '';
         // Format role labels
         if (role === 'Team Lead') role = 'Team Lead';

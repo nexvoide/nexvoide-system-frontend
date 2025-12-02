@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Plus, Pencil, Trash2, X, User, Shield, Users, Briefcase, Crown, Eye, EyeOff, Search, ChevronDown, Check } from "lucide-react";
 import { useAppStore } from "../stores/appStore.js";
 import { hashPassword, generatePassword } from "../utils/password.js";
-import { ROLES, ROLE_LABELS, getRoleBadgeProps } from "../utils/permissions.js";
+import { ROLES, ROLE_LABELS, getRoleBadgeProps, normalizeRoles } from "../utils/permissions.js";
 import * as db from "../lib/db.js";
 import RoleBadge from "../components/RoleBadge.jsx";
 
@@ -70,21 +70,7 @@ export default function UserManagement() {
     if (user) {
       setEditing(user);
       // Normalize role to array
-      let roles = user.role || ["employee"];
-      if (typeof roles === 'string') {
-        try {
-          const parsed = JSON.parse(roles);
-          if (Array.isArray(parsed)) {
-            roles = parsed;
-          } else {
-            roles = [roles];
-          }
-        } catch {
-          roles = [roles];
-        }
-      } else if (!Array.isArray(roles)) {
-        roles = [roles || "employee"];
-      }
+      const roles = normalizeRoles(user.role, 'employee');
       
       setForm({
         username: user.username || "",
@@ -277,21 +263,7 @@ export default function UserManagement() {
       <div className="grid gap-3">
         {filteredUsers.map((user) => {
           // Normalize role to array for display
-          let userRoles = user.role || ["employee"];
-          if (typeof userRoles === 'string') {
-            try {
-              const parsed = JSON.parse(userRoles);
-              if (Array.isArray(parsed)) {
-                userRoles = parsed;
-              } else {
-                userRoles = [userRoles];
-              }
-            } catch {
-              userRoles = [userRoles];
-            }
-          } else if (!Array.isArray(userRoles)) {
-            userRoles = [userRoles || "employee"];
-          }
+          const userRoles = normalizeRoles(user.role, 'employee');
           const primaryRole = userRoles[0] || "employee";
           const RoleIcon = roleIcons[primaryRole] || User;
           return (
