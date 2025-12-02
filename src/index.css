@@ -1,0 +1,435 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root{
+  --bg-grid-size: 18px;
+}
+
+html, body, #root { 
+  height: 100%; 
+}
+
+html {
+  /* Smooth scrolling */
+  scroll-behavior: smooth;
+  /* Performance optimizations */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  /* Prevent text size adjust on iOS */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased;
+  background-image: radial-gradient(rgba(2,6,23,0.05) 1px, transparent 1px);
+  background-size: var(--bg-grid-size) var(--bg-grid-size);
+  /* Performance optimizations */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* GPU acceleration for smooth animations */
+  transform: translateZ(0);
+  will-change: scroll-position;
+  /* Mobile optimizations */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Mobile-specific input improvements */
+@media (max-width: 768px) {
+  input[type="text"],
+  input[type="password"],
+  input[type="email"],
+  input[type="number"],
+  input[type="date"],
+  input[type="time"],
+  textarea,
+  select {
+    font-size: 16px !important; /* Prevents zoom on iOS */
+    min-height: 44px; /* iOS recommended touch target */
+  }
+  
+  /* Better spacing on mobile */
+  .card {
+    @apply p-4;
+  }
+  
+  /* Improve button touch targets */
+  button {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+}
+
+.glass {
+  @apply bg-white/60 dark:bg-slate-900/50 backdrop-blur-md border border-white/20 dark:border-slate-800/60 shadow-sm;
+}
+
+.card {
+  @apply rounded-2xl glass p-5;
+}
+
+.btn {
+  @apply inline-flex items-center gap-2 rounded-xl px-4 py-2 font-semibold transition-colors;
+  /* Smooth transitions */
+  will-change: background-color, border-color, color;
+  transform: translateZ(0);
+  /* Mobile touch optimization */
+  touch-action: manipulation;
+  min-height: 44px; /* iOS recommended touch target size */
+}
+.btn-primary { @apply bg-accent text-accent-foreground hover:bg-blue-500; }
+.btn-secondary { @apply bg-slate-100 text-slate-900 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700; }
+
+/* React Grid Layout Styles */
+.react-grid-layout {
+  position: relative;
+}
+
+.react-grid-item {
+  transition: all 200ms ease;
+  transition-property: transform, width, height;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  /* GPU acceleration for smooth dragging/resizing */
+  will-change: transform, width, height;
+  transform: translateZ(0);
+}
+
+/* Background color for adjustable widgets */
+.react-grid-item > .card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.75) 0%, rgba(248, 250, 252, 0.85) 100%) !important;
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(226, 232, 240, 0.4) !important;
+}
+
+.dark .react-grid-item > .card {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(30, 41, 59, 0.9) 100%) !important;
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(51, 65, 85, 0.5) !important;
+}
+
+/* Hide all default dots and borders from react-grid-layout */
+.react-grid-item::before,
+.react-grid-item::after {
+  display: none !important;
+  content: none !important;
+}
+
+.react-grid-item.cssTransforms {
+  transition-property: transform, width, height;
+}
+
+.react-grid-item.resizing {
+  z-index: 1;
+  will-change: width, height;
+}
+
+.react-grid-item.react-draggable-dragging {
+  transition: none;
+  z-index: 3;
+  will-change: transform;
+}
+
+.react-grid-item.dropping {
+  visibility: hidden;
+}
+
+.react-grid-item.react-grid-placeholder {
+  background: rgba(59, 130, 246, 0.2);
+  opacity: 0.2;
+  transition-duration: 100ms;
+  z-index: 2;
+  user-select: none;
+  border-radius: 0.5rem;
+}
+
+.react-resizable-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  z-index: 10;
+}
+
+/* Corner handles */
+.react-resizable-handle-se {
+  bottom: 0;
+  right: 0;
+  cursor: se-resize;
+}
+
+.react-resizable-handle-sw {
+  bottom: 0;
+  left: 0;
+  cursor: sw-resize;
+}
+
+.react-resizable-handle-ne {
+  top: 0;
+  right: 0;
+  cursor: ne-resize;
+}
+
+.react-resizable-handle-nw {
+  top: 0;
+  left: 0;
+  cursor: nw-resize;
+}
+
+/* Edge handles */
+.react-resizable-handle-e {
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  cursor: e-resize;
+  width: 8px;
+  height: 40px;
+}
+
+.react-resizable-handle-w {
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  cursor: w-resize;
+  width: 8px;
+  height: 40px;
+}
+
+.react-resizable-handle-n {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: n-resize;
+  width: 40px;
+  height: 8px;
+}
+
+.react-resizable-handle-s {
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: s-resize;
+  width: 40px;
+  height: 8px;
+}
+
+/* Visual indicator for corner handles - Hidden by default, only show on hover */
+.react-resizable-handle-se::after,
+.react-resizable-handle-sw::after,
+.react-resizable-handle-ne::after,
+.react-resizable-handle-nw::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 2px solid rgba(148, 163, 184, 0.4);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.react-resizable-handle-se::after {
+  right: 2px;
+  bottom: 2px;
+}
+
+.react-resizable-handle-sw::after {
+  left: 2px;
+  bottom: 2px;
+}
+
+.react-resizable-handle-ne::after {
+  right: 2px;
+  top: 2px;
+}
+
+.react-resizable-handle-nw::after {
+  left: 2px;
+  top: 2px;
+}
+
+/* Visual indicator for edge handles - Hidden by default, only show on hover */
+.react-resizable-handle-e::after,
+.react-resizable-handle-w::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 20px;
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.react-resizable-handle-e::after {
+  right: 2px;
+}
+
+.react-resizable-handle-w::after {
+  left: 2px;
+}
+
+.react-resizable-handle-n::after,
+.react-resizable-handle-s::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 4px;
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.react-resizable-handle-n::after {
+  top: 2px;
+}
+
+.react-resizable-handle-s::after {
+  bottom: 2px;
+}
+
+/* Hover effects - Show handles on hover */
+.react-resizable-handle:hover::after {
+  opacity: 1;
+  background: rgba(59, 130, 246, 0.8);
+  border-color: rgba(59, 130, 246, 0.8);
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
+}
+
+.react-resizable-handle:hover {
+  opacity: 1;
+}
+
+.react-resizable-handle {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.drag-handle {
+  cursor: move;
+  user-select: none;
+}
+
+.drag-handle:hover {
+  color: rgb(59, 130, 246) !important;
+}
+
+/* Custom Scrollbar Styles */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.5);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(148, 163, 184, 0.7);
+}
+
+.dark .scrollbar-thin {
+  scrollbar-color: rgba(71, 85, 105, 0.5) transparent;
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgba(71, 85, 105, 0.5);
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(71, 85, 105, 0.7);
+}
+
+/* Recent Activity widget - modern subtle scrollbar, visible only on hover/scroll */
+.recent-activity-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  scroll-behavior: smooth;
+}
+
+.recent-activity-scroll:hover {
+  scrollbar-color: rgba(148, 163, 184, 0.7) transparent;
+}
+
+.recent-activity-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.recent-activity-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.recent-activity-scroll::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 9999px;
+  transition: background-color 0.2s ease;
+}
+
+.recent-activity-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.7);
+}
+
+.dark .recent-activity-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(71, 85, 105, 0.9);
+}
+
+/* Generic widget scrollbar - fully hidden by default, visible only while scrolling */
+.widget-scroll {
+  /* Hide scrollbar by default */
+  scrollbar-width: none; /* Firefox */
+}
+
+.widget-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0; /* WebKit */
+}
+
+/* When the widget is actively scrolling, show a modern thin scrollbar */
+.widget-scroll-visible {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.7) transparent;
+}
+
+.widget-scroll-visible::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.widget-scroll-visible::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.widget-scroll-visible::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.7);
+  border-radius: 9999px;
+}
+
+.dark .widget-scroll-visible {
+  scrollbar-color: rgba(71, 85, 105, 0.9) transparent;
+}
+
+.dark .widget-scroll-visible::-webkit-scrollbar-thumb {
+  background-color: rgba(71, 85, 105, 0.9);
+}
