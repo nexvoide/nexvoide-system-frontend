@@ -1,4 +1,5 @@
 import { supabase, TABLES, isSupabaseConfigured, initializeSupabase, isSupabaseReady } from './supabase.js';
+import { queryCache } from './cache.js';
 
 // Helper to handle Supabase errors
 const handleError = (error, operation) => {
@@ -39,9 +40,19 @@ export const dbProjects = {
     return localStorageGet(TABLES.projects);
   },
   async getAll() {
+    // Check in-memory cache first (fastest)
+    const cacheKey = queryCache.getKey('PROJECTS');
+    const cached = queryCache.get(cacheKey);
+    if (cached !== null) {
+      return cached;
+    }
+
     if (!isSupabaseConfigured) {
       const data = localStorageGet(TABLES.projects);
-      return Array.isArray(data) ? data : [];
+      const result = Array.isArray(data) ? data : [];
+      // Cache the result
+      queryCache.set(cacheKey, result, queryCache.getTTL('PROJECTS'));
+      return result;
     }
     
     // Ensure Supabase is connected (fast check)
@@ -79,16 +90,23 @@ export const dbProjects = {
       
       const supabaseData = Array.isArray(data) ? data : [];
       localStorageSet(TABLES.projects, supabaseData);
+      // Cache the result
+      queryCache.set(cacheKey, supabaseData, queryCache.getTTL('PROJECTS'));
       return supabaseData;
     } catch (error) {
       console.error('Failed to load projects from Supabase:', error.message);
       // Return cached data on error (don't block UI)
       const data = localStorageGet(TABLES.projects);
-      return Array.isArray(data) ? data.filter(p => !p.archived) : [];
+      const result = Array.isArray(data) ? data.filter(p => !p.archived) : [];
+      // Cache the fallback result too
+      queryCache.set(cacheKey, result, queryCache.getTTL('PROJECTS'));
+      return result;
     }
   },
 
   async create(project) {
+    // Invalidate cache on create
+    queryCache.invalidatePattern('PROJECTS');
     if (!isSupabaseConfigured) {
       const newProject = { ...project, id: crypto.randomUUID(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
       const all = localStorageGet(TABLES.projects);
@@ -149,6 +167,8 @@ export const dbProjects = {
       const all = localStorageGet(TABLES.projects);
       all.unshift(data);
       localStorageSet(TABLES.projects, all);
+      // Invalidate cache on create
+      queryCache.invalidatePattern('PROJECTS');
       return data;
     } catch (error) {
       console.warn('Supabase create failed, using localStorage:', error);
@@ -244,6 +264,8 @@ export const dbProjects = {
         all.unshift(data);
       }
       localStorageSet(TABLES.projects, all);
+      // Invalidate cache on update
+      queryCache.invalidatePattern('PROJECTS');
       return data;
     } catch (error) {
       console.warn('Supabase update project failed, using localStorage:', error);
@@ -276,6 +298,8 @@ export const dbProjects = {
       const all = localStorageGet(TABLES.projects);
       const filtered = all.filter(p => String(p.id) !== String(id));
       localStorageSet(TABLES.projects, filtered);
+      // Invalidate cache on delete
+      queryCache.invalidatePattern('PROJECTS');
     } catch (error) {
       console.warn('Supabase delete failed, using localStorage:', error);
       const all = localStorageGet(TABLES.projects);
@@ -291,8 +315,18 @@ export const dbEmployees = {
     return localStorageGet(TABLES.employees);
   },
   async getAll() {
+    // Check in-memory cache first (fastest)
+    const cacheKey = queryCache.getKey('EMPLOYEES');
+    const cached = queryCache.get(cacheKey);
+    if (cached !== null) {
+      return cached;
+    }
+
     if (!isSupabaseConfigured) {
-      return localStorageGet(TABLES.employees);
+      const data = localStorageGet(TABLES.employees);
+      const result = Array.isArray(data) ? data : [];
+      queryCache.set(cacheKey, result, queryCache.getTTL('EMPLOYEES'));
+      return result;
     }
     
     // Ensure Supabase is connected (fast check)
@@ -316,11 +350,16 @@ export const dbEmployees = {
       
       const supabaseData = Array.isArray(data) ? data : [];
       localStorageSet(TABLES.employees, supabaseData);
+      // Cache the result
+      queryCache.set(cacheKey, supabaseData, queryCache.getTTL('EMPLOYEES'));
       return supabaseData;
     } catch (error) {
       console.error('Failed to load employees from Supabase:', error.message);
       // Return cached data on error (don't block UI)
-      return localStorageGet(TABLES.employees);
+      const data = localStorageGet(TABLES.employees);
+      const result = Array.isArray(data) ? data : [];
+      queryCache.set(cacheKey, result, queryCache.getTTL('EMPLOYEES'));
+      return result;
     }
   },
 
@@ -414,6 +453,8 @@ export const dbEmployees = {
       const all = localStorageGet(TABLES.employees);
       all.unshift(finalData);
       localStorageSet(TABLES.employees, all);
+      // Invalidate cache on create
+      queryCache.invalidatePattern('EMPLOYEES');
       console.log('✅ Cached employee in localStorage');
       return finalData;
     } catch (error) {
@@ -509,6 +550,8 @@ export const dbEmployees = {
       };
       if (index !== -1) all[index] = finalData; else all.unshift(finalData);
       localStorageSet(TABLES.employees, all);
+      // Invalidate cache on update
+      queryCache.invalidatePattern('EMPLOYEES');
       return finalData;
     } catch (error) {
       console.warn('Supabase update employee failed, using localStorage:', error);
@@ -557,6 +600,8 @@ export const dbEmployees = {
       const all = localStorageGet(TABLES.employees);
       const filtered = all.filter(e => String(e.id) !== String(id));
       localStorageSet(TABLES.employees, filtered);
+      // Invalidate cache on delete
+      queryCache.invalidatePattern('EMPLOYEES');
     } catch (error) {
       console.error('Error in delete employee:', error);
       throw error;
@@ -1254,8 +1299,18 @@ export const dbUsers = {
   },
 
   async getAll() {
+    // Check in-memory cache first (fastest)
+    const cacheKey = queryCache.getKey('USERS');
+    const cached = queryCache.get(cacheKey);
+    if (cached !== null) {
+      return cached;
+    }
+
     if (!isSupabaseConfigured) {
-      return localStorageGet('users');
+      const data = localStorageGet('users');
+      const result = Array.isArray(data) ? data : [];
+      queryCache.set(cacheKey, result, queryCache.getTTL('USERS'));
+      return result;
     }
     
     // Ensure Supabase is connected (fast check)
@@ -1280,11 +1335,16 @@ export const dbUsers = {
       
       const supabaseData = Array.isArray(data) ? data : [];
       localStorageSet('users', supabaseData);
+      // Cache the result
+      queryCache.set(cacheKey, supabaseData, queryCache.getTTL('USERS'));
       return supabaseData;
     } catch (error) {
       console.error('Failed to load users from Supabase:', error.message);
       // Return cached data on error (don't block UI)
-      return localStorageGet('users');
+      const data = localStorageGet('users');
+      const result = Array.isArray(data) ? data : [];
+      queryCache.set(cacheKey, result, queryCache.getTTL('USERS'));
+      return result;
     }
   },
 

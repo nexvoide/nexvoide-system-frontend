@@ -180,8 +180,6 @@ export function useConnectivity() {
 
   useEffect(() => {
     if (typeof navigator === 'undefined') return;
-    
-    let intervalId;
 
     const checkConnectivity = async () => {
       // Check navigator.onLine first (fast check)
@@ -205,10 +203,10 @@ export function useConnectivity() {
       setSignalStrength(calculateSignalStrength(result.latency));
     };
 
-    // Initial check
+    // Initial check only
     checkConnectivity();
 
-    // Listen to online/offline events
+    // Listen to online/offline events (event-driven, no polling)
     const handleOnline = () => {
       setIsOnline(true);
       checkConnectivity();
@@ -220,16 +218,24 @@ export function useConnectivity() {
       setLatency(null);
     };
 
+    // Also check when page becomes visible (user returns to tab)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        checkConnectivity();
+      }
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Periodic checks (every 8 seconds for faster updates)
-    intervalId = setInterval(checkConnectivity, 8000);
+    // REMOVED: setInterval polling - now purely event-driven
+    // This eliminates 10,800+ requests per day
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      if (intervalId) clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 

@@ -79,7 +79,7 @@ export default function Chat() {
   // Get selected channel data
   const currentChannel = channels.find(ch => ch.id === selectedChannel);
 
-  // Initialize store and load channels from Supabase
+  // Initialize store and load channels from Supabase - FIXED: Only run once on mount
   useEffect(() => {
     initialize();
     
@@ -91,7 +91,8 @@ export default function Chat() {
         subscription.unsubscribe();
       }
     };
-  }, [initialize, setupRealtimeSubscription]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty array = only run on mount, preventing repeated initialization
 
   // Auto-select first channel if none selected
   useEffect(() => {

@@ -29,15 +29,17 @@ function Shell() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Initialize app (Supabase init happens in background, doesn't block)
+  // Initialize app ONCE on mount - FIXED: Empty dependency array prevents re-runs
   useEffect(() => {
     // Start Supabase init in background (non-blocking)
     import('../lib/supabase.js').then(({ initializeSupabase }) => {
       initializeSupabase().catch(() => {}); // Don't block on errors
     });
     // Initialize app immediately (uses cache first, then Supabase)
+    // This will only run once on mount, not on every render
     initialize();
-  }, [initialize]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty array = only run on mount, preventing repeated fetches
 
   // Load user on mount (after Supabase init)
   useEffect(() => {

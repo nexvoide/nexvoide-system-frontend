@@ -39,7 +39,7 @@ export default function Dashboard() {
   // Track which users are online (users list comes from store)
   const [onlineUserIds, setOnlineUserIds] = useState(new Set());
 
-  // Update current user's online status (heartbeat) - using Supabase
+  // Update current user's online status (heartbeat) - OPTIMIZED: Only on mount/unmount and visibility changes
   useEffect(() => {
     if (!user) return;
 
@@ -62,44 +62,51 @@ export default function Dashboard() {
       }
     };
 
-    // Update immediately
+    // Update immediately on mount
     updateOnlineStatus();
 
-    // Update every 15 seconds (heartbeat)
-    const heartbeatInterval = setInterval(updateOnlineStatus, 15000);
+    // Update when page becomes visible (user returns to tab)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        updateOnlineStatus();
+      }
+    };
 
-    // Clean up on page unload (when user closes tab/browser)
+    // Update on focus (user switches back to window)
+    const handleFocus = () => {
+      updateOnlineStatus();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    // Clean up on page unload
     const handleBeforeUnload = () => {
-      // Use sendBeacon for more reliable cleanup on page unload
       removeOnlineStatus();
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     // Cleanup on unmount
     return () => {
-      clearInterval(heartbeatInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      // Also remove on component unmount (e.g., when switching pages)
       removeOnlineStatus();
     };
-  }, [user]);
+  }, [user]); // Only re-run if user changes
 
-  // Load online status only (users list comes from store, already loaded)
+  // Load online status with Supabase Realtime - INSTANT updates when users go online/offline
   useEffect(() => {
+    if (!allUsers || allUsers.length === 0) return;
+    
     let isMounted = true;
     
     const loadOnlineStatus = async () => {
       try {
         // Only check online status (users are already loaded from store)
-        const onlineIds = await db.dbUserOnlineStatus.getOnlineUsers(30); // 30 second threshold
+        const onlineIds = await db.dbUserOnlineStatus.getOnlineUsers(60); // 60 second threshold
 
         if (isMounted) {
-          console.log("👥 Online users:", {
-            total: allUsers?.length || 0,
-            online: onlineIds.size,
-            onlineUserIds: Array.from(onlineIds),
-          });
-
           setOnlineUserIds(onlineIds);
         }
       } catch (e) {
@@ -110,23 +117,63 @@ export default function Dashboard() {
       }
     };
 
-    // Load immediately if users are already available
-    if (allUsers && allUsers.length > 0) {
-      loadOnlineStatus();
-    }
+    // Load immediately
+    loadOnlineStatus();
 
-    // Optimized: Refresh online status every 20 seconds (users list doesn't change often)
-    const interval = setInterval(() => {
-      if (isMounted && allUsers && allUsers.length > 0) {
+    // Setup Supabase Realtime subscription for instant online status updates
+    let subscription = null;
+    const setupRealtimeSubscription = async () => {
+      try {
+        const { supabase, isSupabaseConfigured } = await import('../lib/supabase.js');
+        if (!isSupabaseConfigured || !supabase) return;
+
+        const channel = supabase
+          .channel('online-status-changes')
+          .on(
+            'postgres_changes',
+            {
+              event: '*', // INSERT, UPDATE, DELETE
+              schema: 'public',
+              table: 'user_online_status',
+            },
+            async (payload) => {
+              // When online status changes, reload the list
+              if (isMounted) {
+                await loadOnlineStatus();
+              }
+            }
+          )
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+              console.log('✅ Subscribed to online status changes');
+            }
+          });
+
+        subscription = channel;
+      } catch (e) {
+        console.warn('Failed to setup online status realtime subscription:', e);
+      }
+    };
+
+    setupRealtimeSubscription();
+
+    // Also refresh when page becomes visible (fallback)
+    const handleVisibilityChange = () => {
+      if (!document.hidden && isMounted) {
         loadOnlineStatus();
       }
-    }, 20000);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (subscription) {
+        subscription.unsubscribe().catch(() => {});
+      }
     };
-  }, [allUsers]); // Re-run when users from store change
+  }, [allUsers]); // Re-run only when users from store change
 
   // Get user-specific layout key
   const layoutKey = useMemo(() => {
