@@ -15,6 +15,7 @@ This server handles **all WebRTC signaling** (offer/answer/ICE exchange) via Soc
 - ✅ Multi-instance support (Redis optional)
 - ✅ Automatic cleanup of stale connections
 - ✅ Health check and metrics endpoints
+- ✅ **Automatic storage cleanup** - Deletes expired attachments (3 days old)
 
 ## Setup
 
@@ -60,6 +61,7 @@ cp .env.example .env
    - `REDIS_URL`: Only if using multi-instance scaling
    - `TURN_SERVER_URL`: Only if users have NAT/firewall issues
    - `SUPABASE_URL`: Only if server needs to fetch channel metadata
+   - `SUPABASE_SERVICE_KEY` or `SUPABASE_SERVICE_ROLE_KEY`: **Required for storage cleanup** - Get from Supabase Dashboard > Settings > API > Service Role Key
 
 **Example `.env` file:**
 ```env
@@ -132,6 +134,27 @@ Response:
   "totalParticipants": 15
 }
 ```
+
+### Storage Cleanup
+
+**Automatic**: Runs daily at 2:00 AM to delete expired attachments (older than 3 days)
+
+**Manual Trigger**:
+```bash
+POST /api/cleanup-storage
+```
+
+Response:
+```json
+{
+  "success": true,
+  "deleted": 5,
+  "files": ["file1.pdf", "file2.jpg"],
+  "timestamp": "2024-01-15T10:30:00.000Z"
+}
+```
+
+**📖 For detailed setup instructions, see `STORAGE_CLEANUP_SETUP.md`**
 
 ## Socket.io Events
 

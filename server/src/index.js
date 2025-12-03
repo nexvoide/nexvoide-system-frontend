@@ -18,6 +18,8 @@ import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import Redis from 'ioredis';
+import { createClient } from '@supabase/supabase-js';
+import cron from 'node-cron';
 
 dotenv.config();
 
@@ -26,6 +28,21 @@ const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 const REDIS_URL = process.env.REDIS_URL;
 const NODE_ENV = process.env.NODE_ENV || 'development';
+
+// Supabase configuration for storage cleanup
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+const STORAGE_BUCKET = 'project-attachments';
+const DELETE_AFTER_HOURS = 72; // 3 days
+
+// Initialize Supabase client for storage operations (requires service key for admin operations)
+let supabaseStorage = null;
+if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+  supabaseStorage = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  console.log('✅ Supabase storage client initialized for cleanup');
+} else {
+  console.warn('⚠️ Supabase storage cleanup disabled: SUPABASE_URL and SUPABASE_SERVICE_KEY not set');
+}
 
 // Initialize Express for health checks
 const app = express();
@@ -50,6 +67,94 @@ app.get('/metrics', (req, res) => {
     totalConnections: io.engine.clientsCount,
     totalParticipants: Object.values(roomMap).reduce((sum, room) => sum + Object.keys(room.participants).length, 0)
   });
+});
+
+/**
+ * Cleanup expired files from Supabase Storage
+ * Deletes files older than 72 hours (3 days)
+ */
+async function cleanupExpiredFiles() {
+  if (!supabaseStorage) {
+    console.warn('⚠️ Supabase storage not configured. Skipping cleanup.');
+    return { success: false, message: 'Supabase storage not configured' };
+  }
+
+  try {
+    console.log('🧹 Starting storage cleanup...');
+    
+    // Get all files in the bucket
+    const { data: files, error: listError } = await supabaseStorage.storage
+      .from(STORAGE_BUCKET)
+      .list('', {
+        limit: 1000,
+        sortBy: { column: 'created_at', order: 'asc' }
+      });
+
+    if (listError) {
+      console.error('❌ Failed to list files:', listError);
+      return { success: false, error: listError.message };
+    }
+
+    if (!files || files.length === 0) {
+      console.log('✅ No files to cleanup');
+      return { success: true, deleted: 0, message: 'No files found' };
+    }
+
+    const now = new Date();
+    const expiredFiles = [];
+
+    // Check each file's creation time
+    for (const file of files) {
+      if (file.created_at) {
+        const createdAt = new Date(file.created_at);
+        const hoursSinceCreation = (now - createdAt) / (1000 * 60 * 60);
+        
+        if (hoursSinceCreation >= DELETE_AFTER_HOURS) {
+          expiredFiles.push(file.name);
+        }
+      }
+    }
+
+    if (expiredFiles.length > 0) {
+      console.log(`🗑️ Found ${expiredFiles.length} expired files to delete`);
+      
+      // Delete expired files
+      const { error: deleteError } = await supabaseStorage.storage
+        .from(STORAGE_BUCKET)
+        .remove(expiredFiles);
+
+      if (deleteError) {
+        console.error('❌ Failed to delete files:', deleteError);
+        return { success: false, error: deleteError.message };
+      }
+
+      console.log(`✅ Successfully deleted ${expiredFiles.length} expired files`);
+      return { success: true, deleted: expiredFiles.length, files: expiredFiles };
+    } else {
+      console.log('✅ No expired files found');
+      return { success: true, deleted: 0, message: 'No expired files' };
+    }
+  } catch (error) {
+    console.error('❌ Error during cleanup:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Manual cleanup endpoint (for testing/manual triggers)
+app.post('/api/cleanup-storage', async (req, res) => {
+  try {
+    const result = await cleanupExpiredFiles();
+    res.json({
+      ...result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 const httpServer = createServer(app);
@@ -544,6 +649,27 @@ setInterval(() => {
     });
   });
 }, 30000);
+
+// ============================================================================
+// STORAGE CLEANUP SCHEDULER
+// ============================================================================
+// Schedule automatic cleanup of expired files (runs daily at 2:00 AM)
+if (supabaseStorage) {
+  // Run cleanup daily at 2:00 AM
+  cron.schedule('0 2 * * *', async () => {
+    console.log('⏰ Scheduled storage cleanup triggered');
+    await cleanupExpiredFiles();
+  });
+  
+  // Also run cleanup on server start (optional - comment out if you don't want this)
+  // cleanupExpiredFiles().catch(err => {
+  //   console.error('❌ Initial cleanup failed:', err);
+  // });
+  
+  console.log('✅ Storage cleanup scheduler initialized (runs daily at 2:00 AM)');
+} else {
+  console.warn('⚠️ Storage cleanup scheduler disabled: Supabase not configured');
+}
 
 // Start server
 httpServer.listen(PORT, () => {
