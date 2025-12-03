@@ -29,3 +29,5 @@ FROM pg_indexes
 WHERE tablename = 'employees'
 ORDER BY indexname;
 
+
+

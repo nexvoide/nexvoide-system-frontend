@@ -96,7 +96,20 @@ Create a `.env` file with:
 ```env
 VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+
+# Optional: Custom latency test endpoint (for faster ping measurements)
+# Use a lightweight endpoint close to your region (e.g., your own API health endpoint)
+VITE_LATENCY_TEST_URL=https://your-fast-endpoint.com/health
 ```
+
+**Latency Optimization**: The system automatically uses the fastest available endpoint for latency testing. It prioritizes:
+1. Custom endpoint (if `VITE_LATENCY_TEST_URL` is set)
+2. Your Supabase endpoint
+3. Your backend server endpoint
+4. Cloudflare CDN (fast globally, optimized for Pakistan/Asia)
+5. Local resources
+
+This ensures the fastest possible latency measurements, especially important for users in Pakistan and other regions.
 
 ### Supabase Setup
 

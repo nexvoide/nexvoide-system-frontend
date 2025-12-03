@@ -18,52 +18,135 @@ export const SIGNAL_STRENGTH = {
 };
 
 /**
+ * Get optimized endpoints for latency testing
+ * Prioritizes faster endpoints for Pakistan/Asia region
+ */
+function getLatencyEndpoints() {
+  const endpoints = [];
+  
+  // 1. Custom endpoint from environment (fastest if configured)
+  const customEndpoint = import.meta.env.VITE_LATENCY_TEST_URL;
+  if (customEndpoint) {
+    endpoints.push(customEndpoint);
+  }
+  
+  // 2. Supabase endpoint (if configured) - Supabase has good global coverage
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  if (supabaseUrl) {
+    // Use Supabase REST API health endpoint (very lightweight)
+    try {
+      const url = new URL(supabaseUrl);
+      endpoints.push(`${url.origin}/rest/v1/`);
+    } catch (e) {
+      // Invalid URL, skip
+    }
+  }
+  
+  // 3. Backend server endpoint (if configured)
+  const backendUrl = import.meta.env.VITE_SOCKET_SERVER_URL || 
+                     import.meta.env.VITE_VOICE_SERVER_URL;
+  if (backendUrl) {
+    try {
+      const url = new URL(backendUrl);
+      endpoints.push(`${url.origin}/health`); // Try health endpoint
+      endpoints.push(`${url.origin}/`); // Fallback to root
+    } catch (e) {
+      // Invalid URL, skip
+    }
+  }
+  
+  // 4. Local resource (very fast)
+  endpoints.push('/favicon.ico');
+  
+  // 5. Cloudflare CDN (fast globally, good for Pakistan)
+  endpoints.push('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css');
+  
+  // 6. Fast global CDN endpoints optimized for Asia (fallback if custom not set)
+  if (!customEndpoint) {
+    endpoints.push('https://www.cloudflare.com/cdn-cgi/trace'); // Cloudflare trace (very lightweight)
+    endpoints.push('https://1.1.1.1/cdn-cgi/trace'); // Cloudflare DNS (fast in Pakistan)
+  }
+  
+  return endpoints;
+}
+
+/**
+ * Test a single endpoint with timeout
+ * Optimized for Cloudflare trace endpoint and other lightweight endpoints
+ */
+async function testEndpoint(endpoint, timeout = 3000) {
+  const startTime = performance.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    // Cloudflare trace endpoint works better with GET, others can use HEAD
+    const isCloudflareTrace = endpoint.includes('cdn-cgi/trace');
+    const method = isCloudflareTrace ? 'GET' : 'HEAD';
+    
+    const url = endpoint + (endpoint.includes('?') ? '&' : '?') + 't=' + Date.now();
+    
+    await fetch(url, {
+      method: method,
+      signal: controller.signal,
+      cache: 'no-cache',
+      mode: 'no-cors',
+      headers: {
+        'Cache-Control': 'no-cache',
+      }
+    });
+    
+    clearTimeout(timeoutId);
+    const endTime = performance.now();
+    return endTime - startTime;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
+/**
  * Test connection speed and quality
+ * Uses parallel testing for faster results
  */
 async function testConnection() {
-  const startTime = performance.now();
+  const endpoints = getLatencyEndpoints();
+  
+  // Test endpoints in parallel for faster results
+  const testPromises = endpoints.map(endpoint => 
+    testEndpoint(endpoint, 3000).catch(() => null)
+  );
+  
   try {
-    // Try to fetch a small resource to test connectivity
-    // Use a reliable endpoint that supports CORS
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    // Wait for first successful result (Promise.any would be ideal but not all browsers support it)
+    const results = await Promise.allSettled(testPromises);
     
-    // Try multiple endpoints for better reliability
-    const endpoints = [
-      '/favicon.ico', // Local resource
-      'https://www.google.com/favicon.ico', // External (may have CORS)
-    ];
+    // Find the fastest successful result
+    let fastestLatency = Infinity;
+    let fastestIndex = -1;
     
-    let lastError = null;
-    for (const endpoint of endpoints) {
-      try {
-        const response = await fetch(endpoint + '?t=' + Date.now(), {
-          method: 'HEAD',
-          signal: controller.signal,
-          cache: 'no-cache',
-          mode: 'no-cors' // Use no-cors to avoid CORS issues
-        });
-        
-        clearTimeout(timeoutId);
-        const endTime = performance.now();
-        const latency = endTime - startTime;
-        
-        // If we get here, connection exists
-        return {
-          connected: true,
-          latency,
-          status: latency < 500 ? CONNECTION_STATUS.ONLINE : 
-                  latency < 2000 ? CONNECTION_STATUS.SLOW : 
-                  CONNECTION_STATUS.UNSTABLE
-        };
-      } catch (err) {
-        lastError = err;
-        // Continue to next endpoint
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (result.status === 'fulfilled' && result.value !== null) {
+        if (result.value < fastestLatency) {
+          fastestLatency = result.value;
+          fastestIndex = i;
+        }
       }
     }
     
-    // If all endpoints fail, return offline
-    throw lastError || new Error('All connection tests failed');
+    if (fastestIndex !== -1 && fastestLatency < Infinity) {
+      return {
+        connected: true,
+        latency: fastestLatency,
+        status: fastestLatency < 500 ? CONNECTION_STATUS.ONLINE : 
+                fastestLatency < 2000 ? CONNECTION_STATUS.SLOW : 
+                CONNECTION_STATUS.UNSTABLE
+      };
+    }
+    
+    // If all failed, return offline
+    throw new Error('All connection tests failed');
   } catch (error) {
     return {
       connected: false,
@@ -140,8 +223,8 @@ export function useConnectivity() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Periodic checks (every 10 seconds)
-    intervalId = setInterval(checkConnectivity, 10000);
+    // Periodic checks (every 8 seconds for faster updates)
+    intervalId = setInterval(checkConnectivity, 8000);
 
     return () => {
       window.removeEventListener('online', handleOnline);
