@@ -88,9 +88,14 @@ export function formatPhoneForWhatsApp(phone) {
       }
     }
     const attachmentsSection = attachmentLinks ? `\n📎 *Attachments:*\n${attachmentLinks}` : '';
+    const customNotes = project.notes && String(project.notes).trim().length > 0
+      ? String(project.notes).trim()
+      : (project.isRevision
+          ? 'Kindly prioritize this revision and ensure it matches the client\'s feedback.'
+          : 'Please start as soon as possible and keep your progress updated in the dashboard.');
     const message = project.isRevision
-      ? `*🔁 REVISION PROJECT ASSIGNED*\n\nHello *${employeeName}* 👋\n\nA project revision has been assigned to you. Please review the details below carefully:\n\n------------------------\n📋 *Project Name:* ${projectName}\n🛠️ *Service:* ${service}\n📦 *Revision Quantity:* ${quantity}\n💰 *Your Cost:* ${costDisplay}\n⏰ *Deadline:* ${deadline}${sourceLinkSection}${attachmentsSection}\n------------------------\n\n🧾 *Notes:*\nKindly prioritize this revision and ensure it matches the client's feedback.\n\nIf you have any questions, contact your project manager before starting.\n\nThanks for your effort, ${employeeName}! 🙌\n- *Nexvoide Management Team* 💼`
-      : `*🟢 NEW PROJECT ASSIGNED*\n\nHello *${employeeName}* 👋\n\nYou've been assigned to a new project! Please review the details below carefully:\n\n------------------------\n📋 *Project Name:* ${projectName}\n🛠️ *Service:* ${service}\n📦 *Quantity:* ${quantity}\n💰 *Your Cost:* ${costDisplay}\n⏰ *Deadline:* ${deadline}${sourceLinkSection}${attachmentsSection}\n------------------------\n\n🧾 *Notes:*\nPlease start as soon as possible and keep your progress updated in the dashboard.\n\nIf you have any questions, feel free to reach out to your project manager.\n\nThanks & good luck, ${employeeName}! 🚀\n- *Nexvoide Management Team* 💼`;
+      ? `*🔁 REVISION PROJECT ASSIGNED*\n\nHello *${employeeName}* 👋\n\nA project revision has been assigned to you. Please review the details below carefully:\n\n------------------------\n📋 *Project Name:* ${projectName}\n🛠️ *Service:* ${service}\n📦 *Revision Quantity:* ${quantity}\n💰 *Your Cost:* ${costDisplay}\n⏰ *Deadline:* ${deadline}${sourceLinkSection}${attachmentsSection}\n------------------------\n\n🧾 *Notes:*\n${customNotes}\n\nIf you have any questions, contact your project manager before starting.\n\nThanks for your effort, ${employeeName}! 🙌\n- *Nexvoide Management Team* 💼`
+      : `*🟢 NEW PROJECT ASSIGNED*\n\nHello *${employeeName}* 👋\n\nYou've been assigned to a new project! Please review the details below carefully:\n\n------------------------\n📋 *Project Name:* ${projectName}\n🛠️ *Service:* ${service}\n📦 *Quantity:* ${quantity}\n💰 *Your Cost:* ${costDisplay}\n⏰ *Deadline:* ${deadline}${sourceLinkSection}${attachmentsSection}\n------------------------\n\n🧾 *Notes:*\n${customNotes}\n\nIf you have any questions, feel free to reach out to your project manager.\n\nThanks & good luck, ${employeeName}! 🚀\n- *Nexvoide Management Team* 💼`;
   
   // Properly encode the message for WhatsApp URL
   // encodeURIComponent correctly handles UTF-8 including emojis

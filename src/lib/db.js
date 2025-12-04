@@ -156,6 +156,7 @@ export const dbProjects = {
         assigned: assignedValue,
         raw_source_link: project.raw_source_link || project.rawSourceLink || null,
         attachments: attachmentsValue,
+        notes: project.notes || null,
       };
       const { data, error } = await supabase
         .from(TABLES.projects)
@@ -222,6 +223,7 @@ export const dbProjects = {
       if (updates.start_date !== undefined) projectData.start_date = updates.start_date;
       if (updates.end_date !== undefined) projectData.end_date = updates.end_date;
       if (updates.deadline !== undefined) projectData.deadline = updates.deadline;
+      if (updates.notes !== undefined) projectData.notes = updates.notes || null;
       
       // Handle assigned field - it might be a string (from DB) or an array (from form)
       if (updates.assigned !== undefined) {

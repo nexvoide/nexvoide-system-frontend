@@ -9,7 +9,7 @@ import { notifyProjectAssignment } from "../utils/notificationHelpers.js";
 
 export default function ProjectForm({ editing, onDone, triggerLabel }) {
   const { addProject, updateProject, profiles, agencies, brands, employees, rate, user, userRole, allUsers } = useAppStore();
-      const [form, setForm] = useState({
+  const [form, setForm] = useState({
     platform: "Fiverr",
     profileId: "",
     agencyId: "",
@@ -28,7 +28,8 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
     deadline: "",
     rawSourceLink: "",
     rawSourceLinks: [""],
-    attachments: []
+    attachments: [],
+    notes: ""
   });
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
@@ -56,7 +57,8 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
     deadline: "",
     rawSourceLink: "",
     rawSourceLinks: [""],
-    attachments: []
+    attachments: [],
+    notes: ""
   });
 
   // Helper function to convert deadline to datetime-local format
@@ -135,7 +137,8 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
         assigned, 
         attachments,
         rawSourceLinks,
-        deadline: formattedDeadline
+        deadline: formattedDeadline,
+        notes: editing.notes || ""
       });
     } else {
       setForm(getDefaultForm());
@@ -317,7 +320,8 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
         assigned: (form.assigned || []).filter((a) => a.name).map((a) => ({ ...a, costValue: Number(a.costValue) || 0 })),
         deadline: deadlineValue,
         rawSourceLink: rawSourceLinkValue,
-        rawSourceLinks: undefined
+        rawSourceLinks: undefined,
+        notes: form.notes || ""
       };
       
       // Get old assigned employees for comparison (if editing)
@@ -603,6 +607,18 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
         <div className="text-xs text-slate-400 mt-1">
           One link per field. Use the + button to add multiple sources.
         </div>
+      </div>
+
+      <div className="mt-3">
+        <label className="text-xs text-slate-500 mb-1">
+          Internal Notes / Instructions for Employee
+        </label>
+        <textarea
+          className="glass w-full px-3 py-2 rounded-xl min-h-[80px] resize-y"
+          value={form.notes || ""}
+          onChange={(e) => set("notes", e.target.value)}
+          placeholder="Write any important notes, instructions or context for the assigned employee. These will also be included in the WhatsApp message."
+        />
       </div>
 
       <div className="mt-3">
