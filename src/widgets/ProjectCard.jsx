@@ -81,6 +81,20 @@ export default function ProjectCard({ project, onEdit, currency, rate }) {
   // Show Team Payment if: user has finance details permission (Admin/Manager) OR user is assigned to the project
   const canSeeTeamPayment = canViewFinanceDetails || isUserAssigned;
 
+  // Helper: who can see individual assignee cost?
+  // - Admin / finance roles: canViewFinanceDetails === true → see all
+  // - Employee: can see ONLY their own cost line
+  // - Team Lead: cannot see any assignee cost unless also directly assigned as employee
+  const getCanSeeAssigneeCost = (assigneeName) => {
+    if (!user || !assigneeName) return false;
+    const currentId = (user.userId || user.user_id || user.name || '').trim();
+    if (!currentId) return false;
+    // Finance roles (admin) can see all costs
+    if (canViewFinanceDetails) return true;
+    // Otherwise, user can only see their own line
+    return assigneeName.toLowerCase() === currentId.toLowerCase();
+  };
+
   // Get logo from profile/agency/brand
   const clientLogo = useMemo(() => {
     if (project.profileId) {
@@ -310,7 +324,11 @@ export default function ProjectCard({ project, onEdit, currency, rate }) {
                             <Avatar name={a.name} logo={employee?.avatar} />
                             <div className="flex-1">
                               <div className="text-slate-200 font-medium">{a.name}</div>
-                              <div className="text-slate-400">{a.costType === "percentage" ? `${a.costValue}%` : `${a.costValue} PKR`}</div>
+                              {getCanSeeAssigneeCost(a.name) && (
+                                <div className="text-slate-400">
+                                  {a.costType === "percentage" ? `${a.costValue}%` : `${a.costValue} PKR`}
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
@@ -523,7 +541,11 @@ export default function ProjectCard({ project, onEdit, currency, rate }) {
                         <Avatar name={a.name} logo={employee?.avatar} />
                         <div className="flex-1">
                           <div className="text-slate-200 font-medium">{a.name}</div>
-                          <div className="text-slate-400">{a.costType === "percentage" ? `${a.costValue}%` : `${a.costValue} PKR`}</div>
+                          {getCanSeeAssigneeCost(a.name) && (
+                            <div className="text-slate-400">
+                              {a.costType === "percentage" ? `${a.costValue}%` : `${a.costValue} PKR`}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );

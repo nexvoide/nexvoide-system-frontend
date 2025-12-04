@@ -65,10 +65,16 @@ export const dbProjects = {
       );
       
       // Only get non-archived projects
+      // IMPORTANT: Treat NULL as "not archived" to avoid hiding newly created rows
+      // that don't have the archived flag set yet.
+      //
+      // We use an OR condition:
+      //   - archived IS NULL
+      //   - OR archived = false
       const queryPromise = supabase
         .from(TABLES.projects)
         .select('*')
-        .eq('archived', false)
+        .or('archived.is.null,archived.eq.false')
         .order('created_at', { ascending: false });
       
       let result = await Promise.race([queryPromise, timeoutPromise]);
@@ -136,7 +142,7 @@ export const dbProjects = {
         }
       }
       
-      const projectData = {
+      const baseProjectData = {
         platform: project.platform || null,
         profile_id: project.profile_id || null,
         agency_id: project.agency_id || null,
@@ -156,14 +162,42 @@ export const dbProjects = {
         assigned: assignedValue,
         raw_source_link: project.raw_source_link || project.rawSourceLink || null,
         attachments: attachmentsValue,
+        // notes is added below in a way that tolerates missing DB column
+      };
+
+      // Start with notes included (for schemas that already have the column)
+      let projectData = {
+        ...baseProjectData,
         notes: project.notes || null,
       };
-      const { data, error } = await supabase
+
+      let { data, error } = await supabase
         .from(TABLES.projects)
         .insert(projectData)
         .select()
         .single();
-      if (error) throw error;
+
+      // If the error indicates an unknown column (e.g. notes not in schema),
+      // retry without the notes field so project creation still works.
+      if (error && (error.message?.includes('column') || error.message?.includes('does not exist') || error.code === '42703')) {
+        console.warn('⚠️ Some project columns may not exist in schema, retrying insert without optional fields:', error.message);
+        // Remove notes and retry
+        // (other fields here have existed historically, so we keep them)
+        const { notes, ...retryData } = projectData;
+        const retryResult = await supabase
+          .from(TABLES.projects)
+          .insert(retryData)
+          .select()
+          .single();
+        if (retryResult.error) {
+          throw retryResult.error;
+        }
+        data = retryResult.data;
+        error = null;
+      } else if (error) {
+        throw error;
+      }
+
       // Always sync to localStorage when Supabase insert succeeds
       const all = localStorageGet(TABLES.projects);
       all.unshift(data);
