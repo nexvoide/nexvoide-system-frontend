@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, FolderPlus, Trash2, Edit2, Smile } from 'lucide-react';
 import { useChatStore } from '../../stores/chatStore.js';
@@ -92,30 +92,40 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
     return channels.filter(ch => ch.section === sectionName).length;
   };
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-3 md:p-4 overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-3 md:p-4">
+      <div className="absolute inset-0" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-[#0a0a1a] border border-slate-800 rounded-xl w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col my-4"
+        className="relative bg-[#0a0a1a] border border-slate-800 rounded-xl w-full max-w-md shadow-2xl max-h-[95vh] sm:max-h-[90vh] flex flex-col mx-2 sm:mx-0"
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <FolderPlus size={20} className="text-[#3b82f6]" />
-            <h3 className="text-lg font-bold text-white">Manage Sections</h3>
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <FolderPlus size={18} className="sm:w-5 sm:h-5 text-[#3b82f6]" />
+            <h3 className="text-base sm:text-lg font-bold text-white">Manage Sections</h3>
           </div>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-slate-800 rounded-lg transition-colors"
+            className="p-1 hover:bg-slate-800 rounded-lg transition-colors touch-manipulation"
           >
-            <X size={20} className="text-slate-400" />
+            <X size={18} className="sm:w-5 sm:h-5 text-slate-400" />
           </button>
         </div>
 
         {/* Form */}
-        <div className="p-6 space-y-4 overflow-y-auto flex-1">
+        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 scrollbar-thin">
           {/* Add New Section */}
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -288,10 +298,10 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-800 flex justify-end">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-800 flex justify-end flex-shrink-0">
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-slate-800/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
+            className="px-4 py-2 bg-slate-800/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors w-full sm:w-auto"
           >
             Close
           </button>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, AlertTriangle, Calendar, CheckCircle, Loader } from 'lucide-react';
 import { getCurrentMonthYear, getMonthLabel, closeMonth } from '../../utils/monthlyClosing.js';
@@ -96,18 +96,31 @@ export default function MonthlyClosingDialog({ open, onClose, onSuccess }) {
     onClose();
   };
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = '';
+      };
+    }
+  }, [open]);
+
   if (!open) return null;
 
   return (
     <>
       <AnimatePresence>
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-3 md:p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleCancel} />
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="glass rounded-2xl p-4 md:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto my-4"
+            className="relative glass rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 max-w-md w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col mx-2 sm:mx-0"
+            onClick={(e) => e.stopPropagation()}
           >
+            <div className="overflow-y-auto flex-1 scrollbar-thin">
             {step === 1 && (
               <>
                 {/* Header */}
@@ -171,7 +184,7 @@ export default function MonthlyClosingDialog({ open, onClose, onSuccess }) {
                 )}
 
                 {/* Actions */}
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4 border-t border-slate-700">
                   <button
                     onClick={handleCancel}
                     className="flex-1 px-4 py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-white transition-colors"
@@ -225,6 +238,7 @@ export default function MonthlyClosingDialog({ open, onClose, onSuccess }) {
                 )}
               </div>
             )}
+            </div>
           </motion.div>
         </div>
       </AnimatePresence>

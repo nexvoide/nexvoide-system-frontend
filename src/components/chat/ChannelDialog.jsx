@@ -47,6 +47,14 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
     }
   }, [editing, sections]);
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -93,35 +101,37 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+      <div className="absolute inset-0" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-[#0a0a1a] border border-slate-800 rounded-xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto my-4"
+        className="relative bg-[#0a0a1a] border border-slate-800 rounded-xl w-full max-w-md shadow-2xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col mx-2 sm:mx-0"
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3">
             {channelType === 'voice' ? (
-              <Mic size={20} className="text-[#3b82f6]" />
+              <Mic size={18} className="sm:w-5 sm:h-5 text-[#3b82f6]" />
             ) : (
-              editing ? <Edit2 size={20} className="text-[#3b82f6]" /> : <Hash size={20} className="text-[#3b82f6]" />
+              editing ? <Edit2 size={18} className="sm:w-5 sm:h-5 text-[#3b82f6]" /> : <Hash size={18} className="sm:w-5 sm:h-5 text-[#3b82f6]" />
             )}
-            <h3 className="text-lg font-bold text-white">
+            <h3 className="text-base sm:text-lg font-bold text-white">
               {editing ? 'Edit Channel' : 'Create Channel'}
             </h3>
           </div>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-slate-800 rounded-lg transition-colors"
+            className="p-1 hover:bg-slate-800 rounded-lg transition-colors touch-manipulation"
           >
-            <X size={20} className="text-slate-400" />
+            <X size={18} className="sm:w-5 sm:h-5 text-slate-400" />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 scrollbar-thin">
           {/* Channel Name */}
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -272,27 +282,27 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
           )}
 
           {/* Actions */}
-          <div className="flex items-center justify-between pt-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-4 border-t border-slate-800">
             {editing && (
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}
-                className="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg transition-colors text-sm font-medium"
+                className="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg transition-colors text-sm font-medium sm:flex-none"
               >
                 Delete Channel
               </button>
             )}
-            <div className="flex gap-2 ml-auto">
+            <div className="flex flex-col sm:flex-row gap-2 sm:ml-auto w-full sm:w-auto">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 bg-slate-800/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
+                className="flex-1 sm:flex-none px-4 py-2 bg-slate-800/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg transition-colors font-medium"
+                className="flex-1 sm:flex-none px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg transition-colors font-medium"
               >
                 {editing ? 'Save Changes' : 'Create Channel'}
               </button>

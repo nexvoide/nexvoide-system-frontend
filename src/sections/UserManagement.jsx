@@ -36,6 +36,16 @@ export default function UserManagement() {
     loadUsers();
   }, []);
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = '';
+      };
+    }
+  }, [open]);
+
   // Close roles dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -352,26 +362,29 @@ export default function UserManagement() {
 
       {/* User Form Modal */}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-3 md:p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="relative w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden max-h-[90vh] overflow-y-auto my-4"
+            className="relative w-full max-w-2xl rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden max-h-[95vh] sm:max-h-[90vh] flex flex-col mx-2 sm:mx-0"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-4 md:p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
+            <div className="p-3 sm:p-4 md:p-6 flex-shrink-0">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
                   {editing ? "Edit User" : "Create New User"}
                 </h2>
                 <button
                   onClick={handleClose}
-                  className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors touch-manipulation"
                 >
                   <X size={20} className="text-slate-500" />
                 </button>
               </div>
+            </div>
 
-              <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+            <div className="px-3 sm:px-4 md:px-6 pb-3 sm:pb-4 md:pb-6 space-y-4 overflow-y-auto flex-1 scrollbar-thin">
                 {/* Profile Picture/Avatar */}
                 <div>
                   <label className="text-xs text-slate-500 mb-1 block">
@@ -657,18 +670,20 @@ export default function UserManagement() {
                     Active (user can login)
                   </label>
                 </div>
-              </div>
+            </div>
 
-              <div className="flex items-center gap-3 mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+            {/* Buttons - outside scrollable area */}
+            <div className="px-3 sm:px-4 md:px-6 pb-3 sm:pb-4 md:pb-6 pt-4 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <button
                   onClick={handleClose}
-                  className="flex-1 btn btn-secondary h-11"
+                  className="flex-1 sm:flex-none btn btn-secondary h-11"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSave}
-                  className="flex-1 btn btn-primary h-11"
+                  className="flex-1 sm:flex-none btn btn-primary h-11"
                 >
                   {editing ? "Update User" : "Create User"}
                 </button>

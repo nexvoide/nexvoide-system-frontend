@@ -662,6 +662,15 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
         notes: "",
       }
   );
+  
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   function set(k, v) {
     setForm((f) => ({ ...f, [k]: v }));
   }
@@ -699,21 +708,21 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
     onSave(payload);
   }
   return (
-    <div className='fixed inset-0 z-50 flex'>
-      <div className='flex-1 bg-black/20' onClick={onClose} />
-      <div className='w-full max-w-md h-full glass rounded-none md:rounded-l-2xl p-4 overflow-auto'>
-        <div className='flex items-center justify-between mb-2'>
-          <div className='text-lg font-semibold'>
+    <div className='fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-0'>
+      <div className='absolute inset-0 bg-black/60 backdrop-blur-sm md:bg-black/20' onClick={onClose} />
+      <div className='relative w-full max-w-md h-full md:h-auto md:max-h-[90vh] glass rounded-xl md:rounded-l-2xl md:rounded-r-none p-3 sm:p-4 overflow-hidden flex flex-col md:ml-auto'>
+        <div className='flex items-center justify-between mb-3 sm:mb-4 flex-shrink-0'>
+          <div className='text-base sm:text-lg font-semibold'>
             {initial ? "Edit Employee" : "Add Employee"}
           </div>
           <button
             type='button'
-            className='glass p-2 rounded-xl'
+            className='glass p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors touch-manipulation'
             onClick={onClose}>
             <X size={16} />
           </button>
         </div>
-        <form onSubmit={submit} className='grid gap-3'>
+        <form onSubmit={submit} className='grid gap-3 overflow-y-auto flex-1 scrollbar-thin pb-2'>
           <div>
             <label className='text-xs text-slate-500'>Name</label>
             <input
@@ -765,7 +774,7 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
               onChange={(e) => set("role", e.target.value)}
             />
           </div>
-          <div className='grid grid-cols-2 gap-2'>
+          <div className='grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3'>
             <div>
               <label className='text-xs text-slate-500'>Email</label>
               <input
@@ -783,7 +792,7 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
               />
             </div>
           </div>
-          <div className='grid grid-cols-2 gap-2'>
+          <div className='grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3'>
             <div>
               <label className='text-xs text-slate-500'>Bank name</label>
               <input
@@ -812,7 +821,7 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
               placeholder='Street address'
             />
           </div>
-          <div className='grid grid-cols-2 gap-2'>
+          <div className='grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3'>
             <div>
               <label className='text-xs text-slate-500'>City</label>
               <input
@@ -832,7 +841,7 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
               />
             </div>
           </div>
-          <div className='grid grid-cols-2 gap-2'>
+          <div className='grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3'>
             <div>
               <label className='text-xs text-slate-500'>Country</label>
               <input
@@ -861,13 +870,13 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
               onChange={(e) => set("notes", e.target.value)}
             />
           </div>
-          <div className='flex items-center gap-2 mt-2'>
-            <button className='btn btn-primary' type='submit'>
+          <div className='flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800'>
+            <button className='btn btn-primary flex-1 sm:flex-none' type='submit'>
               Save
             </button>
             <button
               type='button'
-              className='btn btn-secondary'
+              className='btn btn-secondary flex-1 sm:flex-none'
               onClick={onClose}>
               Cancel
             </button>

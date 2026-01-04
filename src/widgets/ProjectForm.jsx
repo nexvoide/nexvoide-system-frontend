@@ -383,27 +383,37 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
     }
   }, [open, editing]);
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = '';
+      };
+    }
+  }, [open]);
+
   if (triggerLabel) {
     return (
       <>
         <button className="btn btn-primary inline-flex items-center gap-2" onClick={() => setOpen(true)} type="button"><Plus size={16}/>{triggerLabel}</button>
         {open && createPortal(
-          <div className="fixed inset-0 z-[2147483647] flex items-center justify-center p-3 md:p-4 overflow-y-auto">
-            <div className="absolute inset-0 bg-black/60" onClick={() => { 
+          <div className="fixed inset-0 z-[2147483647] flex items-center justify-center p-2 sm:p-3 md:p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { 
               setOpen(false); 
               setForm(getDefaultForm()); 
               onDone && onDone(); 
             }} />
-            <div className="relative w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden my-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-4 md:px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
-                <div className="text-base md:text-lg font-semibold">{editing ? "Edit Project" : "New Project"}</div>
-                <button type="button" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 touch-manipulation" onClick={() => { 
+            <div className="relative w-full max-w-2xl rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden max-h-[95vh] sm:max-h-[90vh] flex flex-col mx-2 sm:mx-0" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-3 sm:px-4 md:px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
+                <div className="text-sm sm:text-base md:text-lg font-semibold">{editing ? "Edit Project" : "New Project"}</div>
+                <button type="button" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 touch-manipulation hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => { 
                   setOpen(false); 
                   setForm(getDefaultForm()); 
                   onDone && onDone(); 
                 }}><X size={16}/></button>
               </div>
-              <form onSubmit={submit} className="px-4 md:px-5 py-4 overflow-y-auto flex-1 scrollbar-thin">
+              <form onSubmit={submit} className="px-3 sm:px-4 md:px-5 py-3 sm:py-4 overflow-y-auto flex-1 scrollbar-thin">
                 {renderForm(true)}
               </form>
             </div>
@@ -416,7 +426,7 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
   function renderForm(isDrawer) {
     return (
       <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
         <div>
           <label className="text-xs text-slate-500">Client / Platform</label>
           <select className="glass w-full px-3 h-11 rounded-xl" value={form.platform} onChange={(e) => { 
@@ -715,10 +725,10 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mt-4">
-        <button className="btn btn-primary" type="submit">{editing ? "Save Changes" : "Create Project"}</button>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-4 pb-2">
+        <button className="btn btn-primary flex-1 sm:flex-none" type="submit">{editing ? "Save Changes" : "Create Project"}</button>
         {editing && (
-          <button type="button" className="btn btn-secondary" onClick={() => onDone && onDone()}>Cancel</button>
+          <button type="button" className="btn btn-secondary flex-1 sm:flex-none" onClick={() => onDone && onDone()}>Cancel</button>
         )}
       </div>
       </>

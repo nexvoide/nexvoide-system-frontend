@@ -219,6 +219,109 @@ CREATE TABLE IF NOT EXISTS user_online_status (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Archived months table (for monthly closing)
+CREATE TABLE IF NOT EXISTS archived_months (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
+    month_label TEXT,
+    closed_by TEXT NOT NULL,
+    total_revenue NUMERIC(12, 2) DEFAULT 0,
+    total_expenses NUMERIC(12, 2) DEFAULT 0,
+    net_profit NUMERIC(12, 2) DEFAULT 0,
+    completed_revenue NUMERIC(12, 2) DEFAULT 0,
+    pending_revenue NUMERIC(12, 2) DEFAULT 0,
+    in_progress_revenue NUMERIC(12, 2) DEFAULT 0,
+    cancelled_revenue NUMERIC(12, 2) DEFAULT 0,
+    revision_revenue NUMERIC(12, 2) DEFAULT 0,
+    total_projects INTEGER DEFAULT 0,
+    completed_projects INTEGER DEFAULT 0,
+    in_progress_projects INTEGER DEFAULT 0,
+    pending_projects INTEGER DEFAULT 0,
+    cancelled_projects INTEGER DEFAULT 0,
+    revision_projects INTEGER DEFAULT 0,
+    total_team_cost NUMERIC(12, 2) DEFAULT 0,
+    active_employees INTEGER DEFAULT 0,
+    total_billing_hours NUMERIC(10, 2) DEFAULT 0,
+    base_currency TEXT DEFAULT 'USD',
+    exchange_rate NUMERIC(10, 4) DEFAULT 280,
+    notes TEXT,
+    closed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(year, month)
+);
+
+-- Archived projects table (for monthly closing)
+CREATE TABLE IF NOT EXISTS archived_projects (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    archived_month_id UUID NOT NULL REFERENCES archived_months(id) ON DELETE CASCADE,
+    original_project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    platform TEXT,
+    profile_id UUID,
+    agency_id UUID,
+    brand_id UUID,
+    client_name TEXT NOT NULL DEFAULT '',
+    project_name TEXT NOT NULL DEFAULT '',
+    service TEXT,
+    quantity TEXT,
+    revision_quantity TEXT,
+    amount NUMERIC(12, 2) DEFAULT 0,
+    currency TEXT DEFAULT 'USD',
+    status TEXT DEFAULT 'Completed',
+    is_revision BOOLEAN DEFAULT false,
+    start_date DATE,
+    end_date DATE,
+    deadline DATE,
+    assigned TEXT DEFAULT '[]',
+    raw_source_link TEXT,
+    attachments TEXT DEFAULT '[]',
+    team_cost NUMERIC(12, 2) DEFAULT 0,
+    profit NUMERIC(12, 2) DEFAULT 0,
+    billing_hours NUMERIC(10, 2) DEFAULT 0,
+    original_created_at TIMESTAMPTZ,
+    original_updated_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Project pull forwards table (for monthly closing)
+CREATE TABLE IF NOT EXISTS project_pull_forwards (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    from_year INTEGER NOT NULL,
+    from_month INTEGER NOT NULL CHECK (from_month >= 1 AND from_month <= 12),
+    to_year INTEGER NOT NULL,
+    to_month INTEGER NOT NULL CHECK (to_month >= 1 AND to_month <= 12),
+    pulled_by TEXT NOT NULL,
+    reason TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Monthly finance snapshots table (for monthly closing)
+CREATE TABLE IF NOT EXISTS monthly_finance_snapshots (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    archived_month_id UUID NOT NULL REFERENCES archived_months(id) ON DELETE CASCADE,
+    fiverr_revenue NUMERIC(12, 2) DEFAULT 0,
+    upwork_revenue NUMERIC(12, 2) DEFAULT 0,
+    direct_revenue NUMERIC(12, 2) DEFAULT 0,
+    agency_revenue NUMERIC(12, 2) DEFAULT 0,
+    service_revenue JSONB DEFAULT '{}',
+    employee_costs JSONB DEFAULT '{}',
+    expenses JSONB DEFAULT '{}',
+    total_invoices INTEGER DEFAULT 0,
+    paid_invoices INTEGER DEFAULT 0,
+    unpaid_invoices INTEGER DEFAULT 0,
+    invoice_details JSONB DEFAULT '[]',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(archived_month_id)
+);
+
+-- Add additional columns to projects table for monthly closing
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_month_id UUID REFERENCES archived_months(id) ON DELETE SET NULL;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS pulled_forward BOOLEAN DEFAULT false;
+
 -- ============================================================================
 -- PART 2: CREATE ALL INDEXES
 -- ============================================================================
@@ -271,6 +374,31 @@ CREATE INDEX IF NOT EXISTS idx_user_channel_reads_user ON user_channel_reads(use
 CREATE INDEX IF NOT EXISTS idx_user_channel_reads_channel ON user_channel_reads(channel_id);
 CREATE INDEX IF NOT EXISTS idx_user_online_status_last_seen ON user_online_status(last_seen DESC);
 
+-- Archived months indexes
+CREATE INDEX IF NOT EXISTS idx_archived_months_year_month ON archived_months(year, month);
+CREATE INDEX IF NOT EXISTS idx_archived_months_closed_at ON archived_months(closed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_archived_months_closed_by ON archived_months(closed_by);
+
+-- Archived projects indexes
+CREATE INDEX IF NOT EXISTS idx_archived_projects_month_id ON archived_projects(archived_month_id);
+CREATE INDEX IF NOT EXISTS idx_archived_projects_original_id ON archived_projects(original_project_id);
+CREATE INDEX IF NOT EXISTS idx_archived_projects_status ON archived_projects(status);
+CREATE INDEX IF NOT EXISTS idx_archived_projects_created_at ON archived_projects(created_at DESC);
+
+-- Project pull forwards indexes
+CREATE INDEX IF NOT EXISTS idx_pull_forwards_project_id ON project_pull_forwards(project_id);
+CREATE INDEX IF NOT EXISTS idx_pull_forwards_from_month ON project_pull_forwards(from_year, from_month);
+CREATE INDEX IF NOT EXISTS idx_pull_forwards_to_month ON project_pull_forwards(to_year, to_month);
+CREATE INDEX IF NOT EXISTS idx_pull_forwards_created_at ON project_pull_forwards(created_at DESC);
+
+-- Monthly finance snapshots indexes
+CREATE INDEX IF NOT EXISTS idx_finance_snapshots_month_id ON monthly_finance_snapshots(archived_month_id);
+CREATE INDEX IF NOT EXISTS idx_finance_snapshots_created_at ON monthly_finance_snapshots(created_at DESC);
+
+-- Projects table indexes for new columns
+CREATE INDEX IF NOT EXISTS idx_projects_archived_month_id ON projects(archived_month_id) WHERE archived_month_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_projects_pulled_forward ON projects(pulled_forward) WHERE pulled_forward = true;
+
 -- ============================================================================
 -- PART 3: CREATE TRIGGERS
 -- ============================================================================
@@ -305,6 +433,12 @@ CREATE TRIGGER update_messages_updated_at BEFORE UPDATE ON messages
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_user_online_status_updated_at BEFORE UPDATE ON user_online_status
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_archived_months_updated_at BEFORE UPDATE ON archived_months
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_archived_projects_updated_at BEFORE UPDATE ON archived_projects
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_finance_snapshots_updated_at BEFORE UPDATE ON monthly_finance_snapshots
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================================
 -- PART 4: ENABLE RLS AND CREATE POLICIES
@@ -323,6 +457,10 @@ ALTER TABLE sections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_channel_reads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_online_status ENABLE ROW LEVEL SECURITY;
+ALTER TABLE archived_months ENABLE ROW LEVEL SECURITY;
+ALTER TABLE archived_projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_pull_forwards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE monthly_finance_snapshots ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies if they exist (for clean re-run)
 DROP POLICY IF EXISTS "Users are viewable by everyone" ON users;
@@ -394,6 +532,26 @@ CREATE POLICY "Online status is viewable by everyone" ON user_online_status FOR 
 CREATE POLICY "Online status is insertable by authenticated users" ON user_online_status FOR INSERT WITH CHECK (true);
 CREATE POLICY "Online status is updatable by authenticated users" ON user_online_status FOR UPDATE USING (true);
 CREATE POLICY "Online status is deletable by authenticated users" ON user_online_status FOR DELETE USING (true);
+
+CREATE POLICY "Archived months are viewable by everyone" ON archived_months FOR SELECT USING (true);
+CREATE POLICY "Archived months are insertable by authenticated users" ON archived_months FOR INSERT WITH CHECK (true);
+CREATE POLICY "Archived months are updatable by authenticated users" ON archived_months FOR UPDATE USING (true);
+CREATE POLICY "Archived months are deletable by authenticated users" ON archived_months FOR DELETE USING (true);
+
+CREATE POLICY "Archived projects are viewable by everyone" ON archived_projects FOR SELECT USING (true);
+CREATE POLICY "Archived projects are insertable by authenticated users" ON archived_projects FOR INSERT WITH CHECK (true);
+CREATE POLICY "Archived projects are updatable by authenticated users" ON archived_projects FOR UPDATE USING (true);
+CREATE POLICY "Archived projects are deletable by authenticated users" ON archived_projects FOR DELETE USING (true);
+
+CREATE POLICY "Pull forwards are viewable by everyone" ON project_pull_forwards FOR SELECT USING (true);
+CREATE POLICY "Pull forwards are insertable by authenticated users" ON project_pull_forwards FOR INSERT WITH CHECK (true);
+CREATE POLICY "Pull forwards are updatable by authenticated users" ON project_pull_forwards FOR UPDATE USING (true);
+CREATE POLICY "Pull forwards are deletable by authenticated users" ON project_pull_forwards FOR DELETE USING (true);
+
+CREATE POLICY "Finance snapshots are viewable by everyone" ON monthly_finance_snapshots FOR SELECT USING (true);
+CREATE POLICY "Finance snapshots are insertable by authenticated users" ON monthly_finance_snapshots FOR INSERT WITH CHECK (true);
+CREATE POLICY "Finance snapshots are updatable by authenticated users" ON monthly_finance_snapshots FOR UPDATE USING (true);
+CREATE POLICY "Finance snapshots are deletable by authenticated users" ON monthly_finance_snapshots FOR DELETE USING (true);
 
 -- ============================================================================
 -- PART 5: ENABLE REALTIME
@@ -482,10 +640,10 @@ ON CONFLICT DO NOTHING;
 -- ============================================================================
 -- 
 -- What was created:
--- ✅ 13 tables
--- ✅ 30+ indexes
--- ✅ 11 triggers
--- ✅ 50+ RLS policies
+-- ✅ 17 tables (including monthly closing tables)
+-- ✅ 40+ indexes
+-- ✅ 15 triggers
+-- ✅ 60+ RLS policies
 -- ✅ 2 storage buckets
 -- ✅ 5 Realtime subscriptions
 -- ✅ Default data

@@ -532,24 +532,32 @@ function SetupDrawer({ type, initial, onClose, onSave }) {
     onSave(form);
   }
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   return (
-    <div className='fixed inset-0 z-[2147483647] flex items-center justify-center p-4'>
-      <div className='absolute inset-0 bg-black/60' onClick={onClose} />
-      <div className='relative w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden'>
-        <div className='flex items-center justify-between px-5 py-3 border-b border-slate-200 dark:border-slate-800'>
-          <div className='text-lg font-semibold'>
+    <div className='fixed inset-0 z-[2147483647] flex items-center justify-center p-2 sm:p-3 md:p-4'>
+      <div className='absolute inset-0 bg-black/60 backdrop-blur-sm' onClick={onClose} />
+      <div className='relative w-full max-w-md rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden max-h-[95vh] sm:max-h-[90vh] flex flex-col mx-2 sm:mx-0' onClick={(e) => e.stopPropagation()}>
+        <div className='flex items-center justify-between px-3 sm:px-4 md:px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0'>
+          <div className='text-base sm:text-lg font-semibold'>
             {initial ? `Edit ${type}` : `Add ${type}`}
           </div>
           <button
             type='button'
-            className='p-2 rounded-xl bg-slate-100 dark:bg-slate-800'
+            className='p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors touch-manipulation'
             onClick={onClose}>
             <X size={16} />
           </button>
         </div>
         <form
           onSubmit={submit}
-          className='px-5 py-4 max-h-[75vh] overflow-auto'>
+          className='px-3 sm:px-4 md:px-5 py-3 sm:py-4 overflow-y-auto flex-1 scrollbar-thin'>
           <div className='grid gap-3'>
             <div>
               <label className='text-xs text-slate-500'>Name</label>
