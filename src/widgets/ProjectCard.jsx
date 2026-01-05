@@ -187,20 +187,20 @@ export default function ProjectCard({ project, onEdit, currency, rate }) {
     <motion.div 
       whileHover={{ y: -2 }} 
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-      className={`card w-full overflow-hidden ${isOverdue ? 'ring-2 ring-red-500 animate-pulse' : ''}`}
+      className={`card w-full max-w-full overflow-hidden ${isOverdue ? 'ring-2 ring-red-500 animate-pulse' : ''}`}
     >
       {/* Mobile Design - Different Layout */}
       <div className="md:hidden">
         {/* Header Section */}
-        <div className="p-4 pb-3 border-b border-slate-700/50">
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div className="p-3 sm:p-4 pb-3 border-b border-slate-700/50">
+          <div className="flex items-start justify-between gap-2 sm:gap-3 mb-3">
+            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
               <div className="flex-shrink-0">
                 <Avatar name={project.clientName} logo={clientLogo} />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs text-slate-400 mb-1">{project.platform}</div>
-                <div className="text-base font-bold text-white mb-1 truncate">{project.projectName}</div>
+                <div className="text-xs text-slate-400 mb-1 truncate">{project.platform}</div>
+                <div className="text-sm sm:text-base font-bold text-white mb-1 break-words">{project.projectName}</div>
                 <div className="text-xs text-slate-400 truncate">{project.clientName}</div>
               </div>
             </div>
@@ -211,7 +211,7 @@ export default function ProjectCard({ project, onEdit, currency, rate }) {
           
           {/* Deadline with Progress - Prominent on Mobile */}
           {due && (
-            <div className="mt-3 p-3 rounded-xl bg-slate-800/60 border border-slate-700/50">
+            <div className="mt-3 p-2.5 sm:p-3 rounded-xl bg-slate-800/60 border border-slate-700/50">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs text-slate-400">Deadline</span>
                 <span className={`text-xs font-semibold ${isOverdue ? 'text-red-400' : isUrgent ? 'text-amber-400' : 'text-emerald-400'}`}>
@@ -241,8 +241,8 @@ export default function ProjectCard({ project, onEdit, currency, rate }) {
         </div>
 
         {/* Financial Info - Compact Grid */}
-        <div className="p-4 pt-3">
-          <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="p-3 sm:p-4 pt-3">
+          <div className="grid grid-cols-2 gap-2 sm:gap-2.5 mb-3">
             {canViewFinanceDetails && (
               <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
                 <div className="text-[10px] text-blue-300/80 mb-1">Order</div>
@@ -273,7 +273,7 @@ export default function ProjectCard({ project, onEdit, currency, rate }) {
           <div className="flex flex-col gap-2 mt-3">
             {canEdit && (
               <button 
-                className="w-full btn btn-primary py-3 text-sm font-semibold touch-manipulation"
+                className="w-full btn btn-primary py-3 text-sm font-semibold touch-manipulation min-h-[44px]"
                 onClick={onEdit}
               >
                 Edit Project
@@ -282,7 +282,7 @@ export default function ProjectCard({ project, onEdit, currency, rate }) {
             <div className="flex gap-2">
               {canEdit && (
                 <select 
-                  className="flex-1 glass px-3 h-11 rounded-xl text-sm touch-manipulation" 
+                  className="flex-1 glass px-3 h-11 rounded-xl text-sm touch-manipulation min-h-[44px]" 
                   value={project.status === 'Revision' ? 'Revising' : project.status === 'Cancelled' ? 'Cancel' : project.status} 
                   onChange={async (e) => {
                     try {
@@ -300,10 +300,10 @@ export default function ProjectCard({ project, onEdit, currency, rate }) {
                 </select>
               )}
               <button 
-                className="btn btn-secondary px-4 h-11 text-sm touch-manipulation" 
+                className="btn btn-secondary px-4 h-11 text-sm touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" 
                 onClick={()=>setExpanded(v=>!v)}
               >
-                {expanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+                {expanded ? <ChevronUp size={18}/> : <ChevronDown size={18}/>}
               </button>
             </div>
           </div>

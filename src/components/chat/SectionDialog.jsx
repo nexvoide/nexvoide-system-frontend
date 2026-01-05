@@ -94,38 +94,43 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
 
   // Prevent body scroll when modal is open
   useEffect(() => {
+    const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = originalStyle;
+      document.body.style.position = '';
+      document.body.style.width = '';
     };
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-3 md:p-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start sm:items-center justify-center p-0 sm:p-2 md:p-4 overflow-y-auto">
       <div className="absolute inset-0" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative bg-[#0a0a1a] border border-slate-800 rounded-xl w-full max-w-md shadow-2xl max-h-[95vh] sm:max-h-[90vh] flex flex-col mx-2 sm:mx-0"
+        className="relative bg-[#0a0a1a] border-0 sm:border border-slate-800 rounded-none sm:rounded-xl w-full max-w-md shadow-2xl min-h-full sm:min-h-0 max-h-full sm:max-h-[90vh] flex flex-col my-0 sm:my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-800 flex items-center justify-between flex-shrink-0 sticky top-0 bg-[#0a0a1a] z-10">
           <div className="flex items-center gap-2 sm:gap-3">
             <FolderPlus size={18} className="sm:w-5 sm:h-5 text-[#3b82f6]" />
             <h3 className="text-base sm:text-lg font-bold text-white">Manage Sections</h3>
           </div>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-slate-800 rounded-lg transition-colors touch-manipulation"
+            className="p-2 hover:bg-slate-800 rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <X size={18} className="sm:w-5 sm:h-5 text-slate-400" />
           </button>
         </div>
 
         {/* Form */}
-        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 scrollbar-thin">
+        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 scrollbar-thin pb-safe">
           {/* Add New Section */}
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -298,10 +303,10 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
         </div>
 
         {/* Footer */}
-        <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-800 flex justify-end flex-shrink-0">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-800 flex justify-end flex-shrink-0 sticky bottom-0 bg-[#0a0a1a]">
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-slate-800/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors w-full sm:w-auto"
+            className="px-4 py-2 bg-slate-800/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors w-full sm:w-auto min-h-[44px] touch-manipulation"
           >
             Close
           </button>

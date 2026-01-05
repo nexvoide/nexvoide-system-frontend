@@ -386,9 +386,14 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
   // Prevent body scroll when modal is open
   useEffect(() => {
     if (open) {
+      const originalStyle = window.getComputedStyle(document.body).overflow;
       document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
       return () => {
-        document.body.style.overflow = '';
+        document.body.style.overflow = originalStyle;
+        document.body.style.position = '';
+        document.body.style.width = '';
       };
     }
   }, [open]);
@@ -398,22 +403,22 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
       <>
         <button className="btn btn-primary inline-flex items-center gap-2" onClick={() => setOpen(true)} type="button"><Plus size={16}/>{triggerLabel}</button>
         {open && createPortal(
-          <div className="fixed inset-0 z-[2147483647] flex items-center justify-center p-2 sm:p-3 md:p-4">
+          <div className="fixed inset-0 z-[2147483647] flex items-start sm:items-center justify-center p-0 sm:p-2 md:p-4 overflow-y-auto">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { 
               setOpen(false); 
               setForm(getDefaultForm()); 
               onDone && onDone(); 
             }} />
-            <div className="relative w-full max-w-2xl rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden max-h-[95vh] sm:max-h-[90vh] flex flex-col mx-2 sm:mx-0" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-3 sm:px-4 md:px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
-                <div className="text-sm sm:text-base md:text-lg font-semibold">{editing ? "Edit Project" : "New Project"}</div>
-                <button type="button" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 touch-manipulation hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => { 
+            <div className="relative w-full max-w-2xl rounded-none sm:rounded-xl md:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden min-h-full sm:min-h-0 max-h-full sm:max-h-[90vh] flex flex-col my-0 sm:my-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-4 sm:px-4 md:px-5 py-3 sm:py-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0 sticky top-0 bg-white dark:bg-slate-950 z-10">
+                <div className="text-base sm:text-base md:text-lg font-semibold">{editing ? "Edit Project" : "New Project"}</div>
+                <button type="button" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 touch-manipulation hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center" onClick={() => { 
                   setOpen(false); 
                   setForm(getDefaultForm()); 
                   onDone && onDone(); 
-                }}><X size={16}/></button>
+                }}><X size={18}/></button>
               </div>
-              <form onSubmit={submit} className="px-3 sm:px-4 md:px-5 py-3 sm:py-4 overflow-y-auto flex-1 scrollbar-thin">
+              <form onSubmit={submit} className="px-4 sm:px-4 md:px-5 py-4 sm:py-4 overflow-y-auto flex-1 scrollbar-thin pb-safe">
                 {renderForm(true)}
               </form>
             </div>

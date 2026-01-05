@@ -99,9 +99,14 @@ export default function MonthlyClosingDialog({ open, onClose, onSuccess }) {
   // Prevent body scroll when modal is open
   useEffect(() => {
     if (open) {
+      const originalStyle = window.getComputedStyle(document.body).overflow;
       document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
       return () => {
-        document.body.style.overflow = '';
+        document.body.style.overflow = originalStyle;
+        document.body.style.position = '';
+        document.body.style.width = '';
       };
     }
   }, [open]);
@@ -111,32 +116,32 @@ export default function MonthlyClosingDialog({ open, onClose, onSuccess }) {
   return (
     <>
       <AnimatePresence>
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-3 md:p-4">
+        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 sm:p-2 md:p-4 overflow-y-auto">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleCancel} />
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="relative glass rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 max-w-md w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col mx-2 sm:mx-0"
+            className="relative glass rounded-none sm:rounded-xl md:rounded-2xl p-4 sm:p-4 md:p-6 max-w-md w-full min-h-full sm:min-h-0 max-h-full sm:max-h-[90vh] overflow-hidden flex flex-col my-0 sm:my-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="overflow-y-auto flex-1 scrollbar-thin">
+            <div className="overflow-y-auto flex-1 scrollbar-thin pb-safe">
             {step === 1 && (
               <>
                 {/* Header */}
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-xl bg-yellow-500/20">
-                      <AlertTriangle size={24} className="text-yellow-400" />
+                <div className="flex items-center justify-between mb-4 sm:mb-6 flex-shrink-0 sticky top-0 bg-transparent z-10 pb-2">
+                  <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                    <div className="p-2 sm:p-3 rounded-xl bg-yellow-500/20 flex-shrink-0">
+                      <AlertTriangle size={20} className="sm:w-6 sm:h-6 text-yellow-400" />
                     </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-white">Close Month</h2>
-                      <p className="text-sm text-slate-400">Archive current month data</p>
+                    <div className="min-w-0">
+                      <h2 className="text-lg sm:text-xl font-bold text-white">Close Month</h2>
+                      <p className="text-xs sm:text-sm text-slate-400">Archive current month data</p>
                     </div>
                   </div>
                   <button
                     onClick={handleCancel}
-                    className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors"
+                    className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0 ml-2"
                   >
                     <X size={20} className="text-slate-400" />
                   </button>

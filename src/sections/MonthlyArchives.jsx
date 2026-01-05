@@ -374,24 +374,39 @@ function MonthDetailsModal({ month, projects, financeSnapshot, onClose }) {
     maximumFractionDigits: 2 
   }).format(n);
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    return () => {
+      document.body.style.overflow = originalStyle;
+      document.body.style.position = '';
+      document.body.style.width = '';
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 sm:p-4 overflow-y-auto bg-black/50 backdrop-blur-sm">
+      <div className="absolute inset-0" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="glass rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+        className="relative glass rounded-none sm:rounded-2xl p-4 sm:p-6 max-w-4xl w-full min-h-full sm:min-h-0 max-h-full sm:max-h-[90vh] overflow-hidden flex flex-col my-0 sm:my-auto"
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-white">{month.month_label}</h2>
-            <p className="text-sm text-slate-400 mt-1">
+        <div className="flex items-center justify-between mb-4 sm:mb-6 flex-shrink-0 sticky top-0 bg-transparent z-10 pb-2">
+          <div className="flex-1 min-w-0 pr-2">
+            <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white">{month.month_label}</h2>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
               Detailed archive information
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors"
+            className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
           >
             <X size={20} className="text-slate-400" />
           </button>

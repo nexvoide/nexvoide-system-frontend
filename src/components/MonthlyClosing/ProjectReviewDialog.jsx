@@ -74,28 +74,45 @@ export default function ProjectReviewDialog({
     [projects]
   );
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (open) {
+      const originalStyle = window.getComputedStyle(document.body).overflow;
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+      return () => {
+        document.body.style.overflow = originalStyle;
+        document.body.style.position = '';
+        document.body.style.width = '';
+      };
+    }
+  }, [open]);
+
   if (!open) return null;
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 sm:p-4 overflow-y-auto bg-black/50 backdrop-blur-sm">
+        <div className="absolute inset-0" onClick={onClose} />
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="glass rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+          className="relative glass rounded-none sm:rounded-2xl p-4 sm:p-6 max-w-4xl w-full min-h-full sm:min-h-0 max-h-full sm:max-h-[90vh] overflow-hidden flex flex-col my-0 sm:my-auto"
+          onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-2xl font-bold text-white">Review Projects for {new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}</h2>
-              <p className="text-sm text-slate-400 mt-1">
+          <div className="flex items-center justify-between mb-4 sm:mb-6 flex-shrink-0 sticky top-0 bg-transparent z-10 pb-2">
+            <div className="flex-1 min-w-0 pr-2">
+              <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white">Review Projects for {new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}</h2>
+              <p className="text-xs sm:text-sm text-slate-400 mt-1">
                 Completed projects will be archived. Incomplete projects will be pulled forward automatically.
               </p>
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors"
+              className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
             >
               <X size={20} className="text-slate-400" />
             </button>
@@ -249,22 +266,22 @@ export default function ProjectReviewDialog({
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-700">
-            <div className="text-sm text-slate-400">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-slate-700 flex-shrink-0 sticky bottom-0 bg-transparent">
+            <div className="text-xs sm:text-sm text-slate-400 text-center sm:text-left">
               {completedProjects.length} will be archived • {incompleteProjects.length} will be pulled forward
               {otherProjects.length > 0 && ` • ${otherProjects.length} will remain in system`}
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
               <button
                 onClick={onClose}
-                className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white transition-colors"
+                className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white transition-colors min-h-[44px] touch-manipulation flex-1 sm:flex-none"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirm}
                 disabled={projects.length === 0}
-                className="px-6 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 sm:px-6 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] touch-manipulation flex-1 sm:flex-none"
               >
                 Confirm & Close Month
               </button>

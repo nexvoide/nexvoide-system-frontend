@@ -232,33 +232,48 @@ export default function UserManagementDialog({ channel, allUsers = [], onClose }
       .substring(0, 2);
   };
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    return () => {
+      document.body.style.overflow = originalStyle;
+      document.body.style.position = '';
+      document.body.style.width = '';
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+      <div className="absolute inset-0" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-[#0a0a1a] border border-slate-800 rounded-xl w-full max-w-md shadow-2xl"
+        className="relative bg-[#0a0a1a] border-0 sm:border border-slate-800 rounded-none sm:rounded-xl w-full max-w-md shadow-2xl min-h-full sm:min-h-0 max-h-full sm:max-h-[90vh] flex flex-col my-0 sm:my-auto"
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Users size={20} className="text-[#3b82f6]" />
-            <div>
-              <h3 className="text-lg font-bold text-white">Manage Channel Users</h3>
-              <p className="text-sm text-slate-400">{channel.name}</p>
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-800 flex items-center justify-between flex-shrink-0 sticky top-0 bg-[#0a0a1a] z-10">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <Users size={20} className="text-[#3b82f6] flex-shrink-0" />
+            <div className="min-w-0">
+              <h3 className="text-base sm:text-lg font-bold text-white truncate">Manage Channel Users</h3>
+              <p className="text-xs sm:text-sm text-slate-400 truncate">{channel.name}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-slate-800 rounded-lg transition-colors"
+            className="p-2 hover:bg-slate-800 rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0 ml-2"
           >
             <X size={20} className="text-slate-400" />
           </button>
         </div>
 
         {/* User List */}
-        <div className="p-6 max-h-96 overflow-y-auto scrollbar-thin">
+        <div className="p-4 sm:p-6 flex-1 overflow-y-auto scrollbar-thin pb-safe">
           {allUsers && allUsers.length > 0 ? (
             <div className="space-y-2">
               {allUsers.map((user) => {
@@ -381,20 +396,20 @@ export default function UserManagementDialog({ channel, allUsers = [], onClose }
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-800 flex items-center justify-between">
-          <p className="text-sm text-slate-400">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 flex-shrink-0 sticky bottom-0 bg-[#0a0a1a]">
+          <p className="text-xs sm:text-sm text-slate-400 text-center sm:text-left">
             {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} selected
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-slate-800/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
+              className="px-4 py-2 bg-slate-800/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors min-h-[44px] touch-manipulation flex-1 sm:flex-none"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
-              className="px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg transition-colors font-medium"
+              className="px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg transition-colors font-medium min-h-[44px] touch-manipulation flex-1 sm:flex-none"
             >
               Save Changes
             </button>

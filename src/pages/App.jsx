@@ -249,13 +249,13 @@ function Shell() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col px-3 md:px-4 py-3 min-h-screen">
+      <main className="flex-1 flex flex-col px-2 sm:px-3 md:px-4 py-2 sm:py-3 min-h-screen overflow-x-hidden">
         {/* Top Bar with Connectivity Status */}
-        <div className="flex items-center justify-between md:justify-end gap-3 mb-4">
+        <div className="flex items-center justify-between md:justify-end gap-2 sm:gap-3 mb-3 sm:mb-4">
           {/* Mobile Menu Button */}
           <button
             onClick={() => setMobileMenuOpen(true)}
-            className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
             aria-label="Open menu"
           >
             <Menu size={20} className="text-slate-700 dark:text-slate-300" />
@@ -266,7 +266,7 @@ function Shell() {
             <ConnectivityStatus />
             <button
               onClick={() => setDark(!dark)}
-              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
               title={dark ? "Switch to light mode" : "Switch to dark mode"}
             >
               {dark ? <Sun size={18} className="text-slate-700 dark:text-slate-300" /> : <Moon size={18} className="text-slate-700 dark:text-slate-300" />}
@@ -274,7 +274,7 @@ function Shell() {
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto w-full px-2 md:px-0">
+        <div className="max-w-7xl mx-auto w-full px-0 sm:px-2 md:px-0">
           {tab === "dashboard" && <Dashboard />}
           {tab === "projects" && <Projects />}
           {tab === "hr" && <HR />}

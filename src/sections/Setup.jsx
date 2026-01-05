@@ -534,30 +534,35 @@ function SetupDrawer({ type, initial, onClose, onSave }) {
 
   // Prevent body scroll when modal is open
   useEffect(() => {
+    const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = originalStyle;
+      document.body.style.position = '';
+      document.body.style.width = '';
     };
   }, []);
 
   return (
-    <div className='fixed inset-0 z-[2147483647] flex items-center justify-center p-2 sm:p-3 md:p-4'>
+    <div className='fixed inset-0 z-[2147483647] flex items-start sm:items-center justify-center p-0 sm:p-2 md:p-4 overflow-y-auto'>
       <div className='absolute inset-0 bg-black/60 backdrop-blur-sm' onClick={onClose} />
-      <div className='relative w-full max-w-md rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden max-h-[95vh] sm:max-h-[90vh] flex flex-col mx-2 sm:mx-0' onClick={(e) => e.stopPropagation()}>
-        <div className='flex items-center justify-between px-3 sm:px-4 md:px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0'>
+      <div className='relative w-full max-w-md rounded-none sm:rounded-xl md:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden min-h-full sm:min-h-0 max-h-full sm:max-h-[90vh] flex flex-col my-0 sm:my-auto' onClick={(e) => e.stopPropagation()}>
+        <div className='flex items-center justify-between px-4 sm:px-4 md:px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0 sticky top-0 bg-white dark:bg-slate-950 z-10'>
           <div className='text-base sm:text-lg font-semibold'>
             {initial ? `Edit ${type}` : `Add ${type}`}
           </div>
           <button
             type='button'
-            className='p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors touch-manipulation'
+            className='p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center'
             onClick={onClose}>
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
         <form
           onSubmit={submit}
-          className='px-3 sm:px-4 md:px-5 py-3 sm:py-4 overflow-y-auto flex-1 scrollbar-thin'>
+          className='px-4 sm:px-4 md:px-5 py-4 sm:py-4 overflow-y-auto flex-1 scrollbar-thin pb-safe'>
           <div className='grid gap-3'>
             <div>
               <label className='text-xs text-slate-500'>Name</label>

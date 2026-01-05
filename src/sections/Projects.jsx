@@ -90,54 +90,64 @@ export default function Projects() {
   }
 
   return (
-    <div className="grid gap-1">
-      <div className="glass rounded-2xl h-auto md:h-14 px-3 py-2 md:py-0 flex flex-col md:flex-row items-stretch md:items-center gap-2 mb-3">
-      <input 
-  className="px-3 h-9 rounded-xl flex-1 bg-transparent border-none outline-none ring-0 focus:ring-0 focus:outline-none placeholder-white/60 text-white text-sm md:text-base"
-  placeholder="Search by client/project/platform"
-  value={query}
-  onChange={(e)=>setQuery(e.target.value)}
-/>
-        <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0">
+    <div className="grid gap-2 sm:gap-1 w-full max-w-full overflow-x-hidden">
+      <div className="glass rounded-xl sm:rounded-2xl h-auto md:h-14 px-2.5 sm:px-3 py-2.5 md:py-0 flex flex-col md:flex-row items-stretch md:items-center gap-2.5 md:gap-2 mb-2 sm:mb-3 w-full max-w-full">
+        <input 
+          className="px-3 h-10 md:h-9 rounded-xl flex-1 min-w-0 bg-transparent border-none outline-none ring-0 focus:ring-0 focus:outline-none placeholder-white/60 text-white text-base md:text-sm"
+          placeholder="Search projects..."
+          value={query}
+          onChange={(e)=>setQuery(e.target.value)}
+        />
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-hide w-full min-w-0 -mx-2.5 sm:-mx-3 px-2.5 sm:px-3">
           {['All','In Progress','Revising','Completed','Cancel'].map(t => (
             <button
               key={t}
-              className={`px-3 h-9 rounded-xl text-sm whitespace-nowrap ${tab===t? 'bg-blue-500 text-white' : 'glass'}`}
+              className={`px-3 h-10 md:h-9 rounded-xl text-sm whitespace-nowrap touch-manipulation flex-shrink-0 ${tab===t? 'bg-blue-500 text-white' : 'glass'}`}
               onClick={()=>setTab(t)}
             >{t}</button>
           ))}
         </div>
-        <button
-  className="glass h-9 w-9 rounded-xl grid place-items-center text-white"
-  onClick={() => setMode('table')}
->
-  <Table size={16}/>
-</button>
-
-<button
-  className="glass h-9 w-9 rounded-xl grid place-items-center text-white"
-  onClick={() => setMode('cards')}
->
-  <LayoutGrid size={16}/>
-</button>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <button
+            className="glass h-10 w-10 md:h-9 md:w-9 rounded-xl grid place-items-center text-white touch-manipulation"
+            onClick={() => setMode('table')}
+            title="Table view"
+          >
+            <Table size={16}/>
+          </button>
+          <button
+            className="glass h-10 w-10 md:h-9 md:w-9 rounded-xl grid place-items-center text-white touch-manipulation"
+            onClick={() => setMode('cards')}
+            title="Card view"
+          >
+            <LayoutGrid size={16}/>
+          </button>
+          {canCreate && (
+            <div className="hidden sm:block">
+              <ProjectForm triggerLabel="New Project" editing={editing} onDone={()=>setEditing(null)} />
+            </div>
+          )}
+        </div>
         {canCreate && (
-          <ProjectForm triggerLabel="New Project" editing={editing} onDone={()=>setEditing(null)} />
+          <div className="sm:hidden">
+            <ProjectForm triggerLabel="New Project" editing={editing} onDone={()=>setEditing(null)} />
+          </div>
         )}
       </div>
 
       {mode === 'cards' ? (
-        <div className="grid grid-cols-1 gap-3 md:gap-4 mt-4">
+        <div className="grid grid-cols-1 gap-3 md:gap-4 mt-2 sm:mt-4 w-full max-w-full">
           {filtered.map((p, i) => (
-            <motion.div key={p.id} initial={{opacity:0, y:8}} animate={{opacity:1, y:0}} transition={{delay:i*0.03}}>
+            <motion.div key={p.id} initial={{opacity:0, y:8}} animate={{opacity:1, y:0}} transition={{delay:i*0.03}} className="w-full max-w-full">
               <ProjectCard project={p} onEdit={canEdit ? () => setEditing(p) : null} currency={currency} rate={rate} />
             </motion.div>
           ))}
-          {filtered.length === 0 && <div className="text-slate-500 text-center py-8">No projects found.</div>}
+          {filtered.length === 0 && <div className="text-slate-500 text-center py-8 text-sm">No projects found.</div>}
         </div>
       ) : (
-        <div className="glass rounded-2xl overflow-hidden mt-4">
+        <div className="glass rounded-xl sm:rounded-2xl overflow-hidden mt-2 sm:mt-4 w-full max-w-full">
           {/* Mobile Card View for Table Mode */}
-          <div className="block md:hidden space-y-3 p-3">
+          <div className="block md:hidden space-y-2.5 sm:space-y-3 p-2.5 sm:p-3 w-full max-w-full">
             {filtered.map((p) => {
               const order = convert(p.amount||0, p.currency, currency, rate);
               const assignedArray = ensureAssigned(p.assigned);
@@ -151,48 +161,48 @@ export default function Projects() {
               const canSeeTeamPayment = canViewFinanceDetails || isUserAssigned;
               
               return (
-                <div key={p.id} className="bg-slate-800/50 rounded-xl p-3 border border-slate-700/50">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs text-slate-400 mb-1">{p.platform} • {p.clientName}</div>
-                      <div className="text-sm font-semibold text-white truncate">{p.projectName}</div>
+                <div key={p.id} className="bg-slate-800/50 rounded-xl p-3 sm:p-4 border border-slate-700/50 w-full max-w-full overflow-hidden">
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <div className="text-xs text-slate-400 mb-1 truncate">{p.platform} • {p.clientName}</div>
+                      <div className="text-sm sm:text-base font-semibold text-white break-words">{p.projectName}</div>
                     </div>
-                    <span className="inline-flex items-center px-2 py-1 rounded-lg bg-blue-500/20 text-blue-300 text-xs ml-2 flex-shrink-0">{p.status}</span>
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-500/20 text-blue-300 text-xs flex-shrink-0 whitespace-nowrap">{p.status}</span>
                   </div>
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between">
+                  <div className="space-y-2 text-xs sm:text-sm">
+                    <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
                       <span className="text-slate-400">Assigned:</span>
-                      <span className="text-slate-200 truncate ml-2">{assignedArray.map(a=>a?.name || '').filter(Boolean).join(', ') || 'Unassigned'}</span>
+                      <span className="text-slate-200 break-words sm:text-right">{assignedArray.map(a=>a?.name || '').filter(Boolean).join(', ') || 'Unassigned'}</span>
                     </div>
                     {canViewFinanceDetails && (
-                      <div className="flex justify-between">
+                      <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
                         <span className="text-slate-400">Order:</span>
-                        <span className="text-slate-200">{order.toFixed(2)} {currency}</span>
+                        <span className="text-slate-200 sm:text-right">{order.toFixed(2)} {currency}</span>
                       </div>
                     )}
                     {canSeeTeamPayment && (
-                      <div className="flex justify-between">
+                      <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
                         <span className="text-slate-400">Employee:</span>
-                        <span className="text-slate-200">{emp.toFixed(2)} {currency}</span>
+                        <span className="text-slate-200 sm:text-right">{emp.toFixed(2)} {currency}</span>
                       </div>
                     )}
                     {canViewFinanceDetails && (
-                      <div className="flex justify-between">
+                      <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
                         <span className="text-slate-400">Profit:</span>
-                        <span className="text-green-400 font-medium">{profit.toFixed(2)} {currency}</span>
+                        <span className="text-green-400 font-medium sm:text-right">{profit.toFixed(2)} {currency}</span>
                       </div>
                     )}
                     {p.deadline && (
-                      <div className="flex justify-between">
+                      <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
                         <span className="text-slate-400">Deadline:</span>
-                        <span className="text-slate-200">{new Date(p.deadline).toLocaleDateString()}</span>
+                        <span className="text-slate-200 sm:text-right">{new Date(p.deadline).toLocaleDateString()}</span>
                       </div>
                     )}
                   </div>
                   {canEdit && (
                     <div className="mt-3 pt-3 border-t border-slate-700/50">
                       <button 
-                        className="btn btn-secondary w-full text-xs py-2" 
+                        className="btn btn-secondary w-full text-sm py-2.5 min-h-[44px] touch-manipulation" 
                         onClick={()=>setEditing(p)}
                       >
                         Edit Project
@@ -203,12 +213,12 @@ export default function Projects() {
               );
             })}
             {filtered.length === 0 && (
-              <div className="text-slate-500 text-center py-8">No projects found.</div>
+              <div className="text-slate-500 text-center py-8 text-sm">No projects found.</div>
             )}
           </div>
           
           {/* Desktop Table View */}
-          <div className="hidden md:block overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto scrollbar-thin">
             <table className="min-w-full text-sm">
             <thead className="bg-slate-100 dark:bg-slate-900/50">
               <tr>

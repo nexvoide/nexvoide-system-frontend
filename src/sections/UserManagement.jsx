@@ -39,9 +39,14 @@ export default function UserManagement() {
   // Prevent body scroll when modal is open
   useEffect(() => {
     if (open) {
+      const originalStyle = window.getComputedStyle(document.body).overflow;
       document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
       return () => {
-        document.body.style.overflow = '';
+        document.body.style.overflow = originalStyle;
+        document.body.style.position = '';
+        document.body.style.width = '';
       };
     }
   }, [open]);
@@ -362,29 +367,29 @@ export default function UserManagement() {
 
       {/* User Form Modal */}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-3 md:p-4">
+        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 sm:p-2 md:p-4 overflow-y-auto">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="relative w-full max-w-2xl rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden max-h-[95vh] sm:max-h-[90vh] flex flex-col mx-2 sm:mx-0"
+            className="relative w-full max-w-2xl rounded-none sm:rounded-xl md:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden min-h-full sm:min-h-0 max-h-full sm:max-h-[90vh] flex flex-col my-0 sm:my-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-3 sm:p-4 md:p-6 flex-shrink-0">
-              <div className="flex items-center justify-between mb-4 sm:mb-6">
+            <div className="p-4 sm:p-4 md:p-6 flex-shrink-0 sticky top-0 bg-white dark:bg-slate-950 z-10 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center justify-between">
                 <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
                   {editing ? "Edit User" : "Create New User"}
                 </h2>
                 <button
                   onClick={handleClose}
-                  className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors touch-manipulation"
+                  className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
                 >
                   <X size={20} className="text-slate-500" />
                 </button>
               </div>
             </div>
 
-            <div className="px-3 sm:px-4 md:px-6 pb-3 sm:pb-4 md:pb-6 space-y-4 overflow-y-auto flex-1 scrollbar-thin">
+            <div className="px-4 sm:px-4 md:px-6 pb-4 sm:pb-4 md:pb-6 space-y-4 overflow-y-auto flex-1 scrollbar-thin pb-safe">
                 {/* Profile Picture/Avatar */}
                 <div>
                   <label className="text-xs text-slate-500 mb-1 block">
@@ -673,17 +678,17 @@ export default function UserManagement() {
             </div>
 
             {/* Buttons - outside scrollable area */}
-            <div className="px-3 sm:px-4 md:px-6 pb-3 sm:pb-4 md:pb-6 pt-4 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
+            <div className="px-4 sm:px-4 md:px-6 pb-4 sm:pb-4 md:pb-6 pt-4 border-t border-slate-200 dark:border-slate-700 flex-shrink-0 sticky bottom-0 bg-white dark:bg-slate-950">
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <button
                   onClick={handleClose}
-                  className="flex-1 sm:flex-none btn btn-secondary h-11"
+                  className="flex-1 sm:flex-none btn btn-secondary h-11 min-h-[44px] touch-manipulation"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSave}
-                  className="flex-1 sm:flex-none btn btn-primary h-11"
+                  className="flex-1 sm:flex-none btn btn-primary h-11 min-h-[44px] touch-manipulation"
                 >
                   {editing ? "Update User" : "Create User"}
                 </button>

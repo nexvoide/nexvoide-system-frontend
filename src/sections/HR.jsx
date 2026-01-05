@@ -665,9 +665,14 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
   
   // Prevent body scroll when modal is open
   useEffect(() => {
+    const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = originalStyle;
+      document.body.style.position = '';
+      document.body.style.width = '';
     };
   }, []);
 
@@ -708,21 +713,21 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
     onSave(payload);
   }
   return (
-    <div className='fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-0'>
+    <div className='fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 sm:p-2 md:p-0 overflow-y-auto'>
       <div className='absolute inset-0 bg-black/60 backdrop-blur-sm md:bg-black/20' onClick={onClose} />
-      <div className='relative w-full max-w-md h-full md:h-auto md:max-h-[90vh] glass rounded-xl md:rounded-l-2xl md:rounded-r-none p-3 sm:p-4 overflow-hidden flex flex-col md:ml-auto'>
-        <div className='flex items-center justify-between mb-3 sm:mb-4 flex-shrink-0'>
+      <div className='relative w-full max-w-md min-h-full md:min-h-0 md:h-auto md:max-h-[90vh] glass rounded-none md:rounded-xl md:rounded-l-2xl md:rounded-r-none p-4 sm:p-4 overflow-hidden flex flex-col my-0 md:my-auto md:ml-auto'>
+        <div className='flex items-center justify-between mb-3 sm:mb-4 flex-shrink-0 sticky top-0 bg-transparent z-10 pb-2'>
           <div className='text-base sm:text-lg font-semibold'>
             {initial ? "Edit Employee" : "Add Employee"}
           </div>
           <button
             type='button'
-            className='glass p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors touch-manipulation'
+            className='glass p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center'
             onClick={onClose}>
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
-        <form onSubmit={submit} className='grid gap-3 overflow-y-auto flex-1 scrollbar-thin pb-2'>
+        <form onSubmit={submit} className='grid gap-3 overflow-y-auto flex-1 scrollbar-thin pb-safe'>
           <div>
             <label className='text-xs text-slate-500'>Name</label>
             <input
