@@ -179,7 +179,27 @@ export default function Setup() {
                   </div>
                 )}
 
-                <div className='mt-5 pt-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300'>
+                <div className='mt-5 pt-4 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center'>
+                  <button
+                    className='glass px-3 py-1.5 rounded-lg text-xs inline-flex items-center gap-1 text-slate-700 dark:text-slate-300 hover:bg-orange-500/15 hover:text-orange-400 transition-colors'
+                    onClick={() => {
+                      try {
+                        generateInvoicePDF(
+                          p,
+                          projects,
+                          "profile",
+                          currency,
+                          rate
+                        );
+                      } catch (error) {
+                        console.error("Failed to generate PDF:", error);
+                        alert("Failed to generate PDF. Please try again.");
+                      }
+                    }}>
+                    <Download size={14} />
+                    Invoice PDF
+                  </button>
+                  <div className='flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300'>
                   <button
                     className='btn btn-secondary px-4 py-2 text-xs font-medium hover:bg-blue-500 hover:text-white transition-colors'
                     onClick={() => startEdit(p, "profile")}>
@@ -203,6 +223,7 @@ export default function Setup() {
                     <Trash2 size={14} className='mr-1.5' />
                     Delete
                   </button>
+                  </div>
                 </div>
               </div>
             </div>
