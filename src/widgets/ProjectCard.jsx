@@ -170,7 +170,9 @@ export default function ProjectCard({ project, onEdit, currency, rate }) {
     return `${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
   }
 
-  const isOverdue = due ? now >= due.getTime() : false;
+  // Completed projects are never overdue
+  const status = String(project.status || '').toLowerCase();
+  const isOverdue = status !== 'completed' && due ? now >= due.getTime() : false;
   const isUrgent = !isOverdue && due && remainingMs > 0 && remainingMs <= 24*60*60*1000; // < 24h
 
   // Normalize raw source links: support multiple links stored as newline-separated string

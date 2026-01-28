@@ -46,7 +46,10 @@ export default function Projects() {
   };
 
   // Helper to compute remaining time (ms) until deadline/endDate; overdue => negative
+  // Completed projects are never overdue
   const getRemainingMs = (p) => {
+    const status = String(p.status || '').toLowerCase();
+    if (status === 'completed') return Number.POSITIVE_INFINITY; // Completed = never overdue
     const parseDate = (str) => { const d = new Date(str); return isNaN(d) ? null : d; };
     const now = Date.now();
     const due = parseDate(p.deadline) || parseDate(p.endDate);
@@ -70,11 +73,21 @@ export default function Projects() {
     });
 
     // Sort: overdue first, then by least remaining time
+    // Completed projects are never considered overdue
     return list.sort((a, b) => {
+      const aStatus = String(a.status || '').toLowerCase();
+      const bStatus = String(b.status || '').toLowerCase();
+      const aCompleted = aStatus === 'completed';
+      const bCompleted = bStatus === 'completed';
+      
+      // Completed projects go to the end
+      if (aCompleted && !bCompleted) return 1;
+      if (!aCompleted && bCompleted) return -1;
+      
       const ra = getRemainingMs(a);
       const rb = getRemainingMs(b);
-      const aOver = ra < 0 ? 1 : 0;
-      const bOver = rb < 0 ? 1 : 0;
+      const aOver = !aCompleted && ra < 0 ? 1 : 0;
+      const bOver = !bCompleted && rb < 0 ? 1 : 0;
       if (aOver !== bOver) return bOver - aOver; // overdue first
       // then by remaining time ascending (more overdue -> more negative -> earlier)
       return ra - rb;
@@ -123,16 +136,9 @@ export default function Projects() {
             <LayoutGrid size={16}/>
           </button>
           {canCreate && (
-            <div className="hidden sm:block">
-              <ProjectForm triggerLabel="New Project" editing={editing} onDone={()=>setEditing(null)} />
-            </div>
+            <ProjectForm triggerLabel="New Project" editing={editing} onDone={()=>setEditing(null)} />
           )}
         </div>
-        {canCreate && (
-          <div className="sm:hidden">
-            <ProjectForm triggerLabel="New Project" editing={editing} onDone={()=>setEditing(null)} />
-          </div>
-        )}
       </div>
 
       {mode === 'cards' ? (
@@ -281,7 +287,9 @@ export default function Projects() {
                 const remainingMs = dueTs!==null ? Math.max(0, dueTs - now) : 0;
                 const elapsedMs = totalMs ? Math.min(totalMs, Math.max(0, now - startRefTs)) : 0;
                 const pct = totalMs ? Math.min(100, Math.max(0, (elapsedMs/totalMs)*100)) : 0;
-                const isOverdue = dueTs!==null ? now >= dueTs : false;
+                // Completed projects are never overdue
+                const status = String(p.status || '').toLowerCase();
+                const isOverdue = status !== 'completed' && dueTs!==null ? now >= dueTs : false;
                 const fmtRemain=(ms)=>{ const s=Math.max(0,Math.floor(ms/1000)); const d=Math.floor(s/86400); const h=Math.floor((s%86400)/3600); const m=Math.floor((s%3600)/60); if(d>0) return `${d}d ${h}h`; if(h>0) return `${h}h ${m}m`; const ss=s%60; return `${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`; };
                 return (
                   <tr key={p.id} className="border-t border-slate-200/30">

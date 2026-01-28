@@ -1175,8 +1175,12 @@ export default function Dashboard() {
             const now = new Date();
             const diffTime = deadlineDate.getTime() - now.getTime();
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            // Completed projects are never overdue
+            const status = String(p.status || '').toLowerCase();
+            const isCompleted = status === 'completed';
 
-            if (diffDays < 0) {
+            if (diffDays < 0 && !isCompleted) {
               timeRemaining = {
                 text: `${Math.abs(diffDays)} days overdue`,
                 isOverdue: true,
@@ -1218,8 +1222,14 @@ export default function Dashboard() {
         const dateA = new Date(deadlineA);
         const dateB = new Date(deadlineB);
         const now = new Date();
-        const overdueA = dateA < now;
-        const overdueB = dateB < now;
+        // Completed projects are never overdue
+        const aCompleted = String(a.status || '').toLowerCase() === 'completed';
+        const bCompleted = String(b.status || '').toLowerCase() === 'completed';
+        const overdueA = !aCompleted && dateA < now;
+        const overdueB = !bCompleted && dateB < now;
+        // Completed projects go to the end
+        if (aCompleted && !bCompleted) return 1;
+        if (!aCompleted && bCompleted) return -1;
         if (overdueA && !overdueB) return -1;
         if (!overdueA && overdueB) return 1;
         return dateA - dateB;

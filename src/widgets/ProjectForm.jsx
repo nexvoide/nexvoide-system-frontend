@@ -363,7 +363,9 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
       // Only close form and reset if save is successful
       setForm(getDefaultForm());
       setOpen(false);
-      onDone && onDone();
+      if (onDone) {
+        onDone();
+      }
     } catch (error) {
       console.error('Failed to save project:', error);
       // Don't close form on error - let user try again
@@ -372,6 +374,7 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
   }
 
   const [open, setOpen] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
 
   useEffect(() => {
     if (editing && triggerLabel) setOpen(true);
@@ -398,25 +401,30 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
     }
   }, [open]);
 
+  // Single close handler to prevent double-closing
+  const handleClose = () => {
+    if (isClosing || !open) return; // Prevent multiple calls
+    setIsClosing(true);
+    setOpen(false);
+    setForm(getDefaultForm());
+    if (onDone) {
+      onDone();
+    }
+    // Reset closing flag after a short delay
+    setTimeout(() => setIsClosing(false), 100);
+  };
+
   if (triggerLabel) {
     return (
       <>
         <button className="btn btn-primary inline-flex items-center gap-2" onClick={() => setOpen(true)} type="button"><Plus size={16}/>{triggerLabel}</button>
         {open && createPortal(
           <div className="fixed inset-0 z-[2147483647] flex items-start sm:items-center justify-center p-0 sm:p-2 md:p-4 overflow-y-auto">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { 
-              setOpen(false); 
-              setForm(getDefaultForm()); 
-              onDone && onDone(); 
-            }} />
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
             <div className="relative w-full max-w-2xl rounded-none sm:rounded-xl md:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden min-h-full sm:min-h-0 max-h-full sm:max-h-[90vh] flex flex-col my-0 sm:my-auto" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between px-4 sm:px-4 md:px-5 py-3 sm:py-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0 sticky top-0 bg-white dark:bg-slate-950 z-10">
                 <div className="text-base sm:text-base md:text-lg font-semibold">{editing ? "Edit Project" : "New Project"}</div>
-                <button type="button" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 touch-manipulation hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center" onClick={() => { 
-                  setOpen(false); 
-                  setForm(getDefaultForm()); 
-                  onDone && onDone(); 
-                }}><X size={18}/></button>
+                <button type="button" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 touch-manipulation hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center" onClick={handleClose}><X size={18}/></button>
               </div>
               <form onSubmit={submit} className="px-4 sm:px-4 md:px-5 py-4 sm:py-4 overflow-y-auto flex-1 scrollbar-thin pb-safe">
                 {renderForm(true)}
