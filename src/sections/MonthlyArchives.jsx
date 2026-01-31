@@ -10,7 +10,7 @@ import { hasRole } from '../utils/permissions.js';
 import { ROLES } from '../utils/permissions.js';
 
 export default function MonthlyArchives() {
-  const { user, currency, rate } = useAppStore();
+  const { user, currency, rate, profiles, agencies, brands } = useAppStore();
   const [archivedMonths, setArchivedMonths] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(null);
@@ -353,6 +353,9 @@ export default function MonthlyArchives() {
           month={selectedMonth}
           projects={monthProjects}
           financeSnapshot={financeSnapshot}
+          profiles={profiles || []}
+          agencies={agencies || []}
+          brands={brands || []}
           onClose={() => {
             setSelectedMonth(null);
             setMonthProjects([]);
@@ -365,14 +368,110 @@ export default function MonthlyArchives() {
 }
 
 // Month Details Modal Component
-function MonthDetailsModal({ month, projects, financeSnapshot, onClose }) {
+function MonthDetailsModal({ month, projects, financeSnapshot, profiles = [], agencies = [], brands = [], onClose }) {
   const { currency, rate } = useAppStore();
-  
-  const fmt = (n) => new Intl.NumberFormat('en', { 
-    style: 'currency', 
-    currency: currency, 
-    maximumFractionDigits: 2 
+
+  const fmt = (n) => new Intl.NumberFormat('en', {
+    style: 'currency',
+    currency: currency,
+    maximumFractionDigits: 2
   }).format(n);
+
+  const ensureAssigned = (assigned) => {
+    if (Array.isArray(assigned)) return assigned;
+    if (typeof assigned === 'string') {
+      try {
+        const a = JSON.parse(assigned);
+        return Array.isArray(a) ? a : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
+  // Compute breakdowns from archived projects
+  const { employeeSalaries, byProfile, byAgency, byBrand, totalRevenue, totalExpenses, netProfit } = useMemo(() => {
+    const empMap = {};
+    const profileMap = {};
+    const agencyMap = {};
+    const brandMap = {};
+    let rev = 0;
+    let exp = 0;
+
+    for (const p of projects) {
+      const amount = Number(p.amount) || 0;
+      const pCurrency = p.currency || 'USD';
+      const orderDisplay = convert(amount, pCurrency, currency, rate);
+      rev += orderDisplay;
+
+      const assigned = ensureAssigned(p.assigned);
+      for (const a of assigned) {
+        const name = a.name || 'Unknown';
+        if (!empMap[name]) empMap[name] = 0;
+        if (a.costType === 'percentage') {
+          const cost = orderDisplay * (Number(a.costValue) || 0) / 100;
+          empMap[name] += cost;
+          exp += cost;
+        } else {
+          const cost = convert(Number(a.costValue) || 0, 'PKR', currency, rate);
+          empMap[name] += cost;
+          exp += cost;
+        }
+      }
+
+      const profileId = p.profile_id ?? p.profileId ?? '';
+      const key = String(profileId || 'direct');
+      if (!profileMap[key]) profileMap[key] = { id: profileId, name: '', revenue: 0, count: 0 };
+      profileMap[key].revenue += orderDisplay;
+      profileMap[key].count += 1;
+      if (!profileId && !profileMap[key].name) profileMap[key].name = 'Direct / Other';
+
+      const agencyId = p.agency_id ?? p.agencyId ?? '';
+      const aKey = String(agencyId || 'none');
+      if (agencyId) {
+        if (!agencyMap[aKey]) agencyMap[aKey] = { id: agencyId, name: '', revenue: 0, count: 0 };
+        agencyMap[aKey].revenue += orderDisplay;
+        agencyMap[aKey].count += 1;
+      }
+
+      const brandId = p.brand_id ?? p.brandId ?? '';
+      const bKey = String(brandId || 'none');
+      if (brandId) {
+        if (!brandMap[bKey]) brandMap[bKey] = { id: brandId, name: '', revenue: 0, count: 0 };
+        brandMap[bKey].revenue += orderDisplay;
+        brandMap[bKey].count += 1;
+      }
+    }
+
+    // Resolve names from store
+    const byProfileList = Object.entries(profileMap).map(([k, v]) => {
+      const name = v.id ? (profiles.find(pr => String(pr.id) === String(v.id))?.name || v.name || `Profile #${v.id}`) : (v.name || 'Direct / Other');
+      return { ...v, name };
+    }).filter(r => r.count > 0).sort((a, b) => b.revenue - a.revenue);
+
+    const byAgencyList = Object.entries(agencyMap).map(([k, v]) => {
+      const name = agencies.find(ag => String(ag.id) === String(v.id))?.name || `Agency #${v.id}`;
+      return { ...v, name };
+    }).filter(r => r.count > 0).sort((a, b) => b.revenue - a.revenue);
+
+    const byBrandList = Object.entries(brandMap).map(([k, v]) => {
+      const name = brands.find(br => String(br.id) === String(v.id))?.name || `Brand #${v.id}`;
+      return { ...v, name };
+    }).filter(r => r.count > 0).sort((a, b) => b.revenue - a.revenue);
+
+    const employeeSalaries = Object.entries(empMap).map(([name, cost]) => ({ name, cost })).sort((a, b) => b.cost - a.cost);
+
+    return {
+      employeeSalaries,
+      byProfile: byProfileList,
+      byAgency: byAgencyList,
+      byBrand: byBrandList,
+      totalRevenue: rev,
+      totalExpenses: exp,
+      netProfit: rev - exp
+    };
+  }, [projects, currency, rate, profiles, agencies, brands]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -401,7 +500,7 @@ function MonthDetailsModal({ month, projects, financeSnapshot, onClose }) {
           <div className="flex-1 min-w-0 pr-2">
             <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white">{month.month_label}</h2>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Detailed archive information
+              Detailed archive: projects, salaries, and business by profile, agency & brand
             </p>
           </div>
           <button
@@ -413,19 +512,179 @@ function MonthDetailsModal({ month, projects, financeSnapshot, onClose }) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto space-y-4">
-          {/* Projects List */}
+        <div className="flex-1 overflow-y-auto space-y-5">
+          {/* Financial Summary */}
+          <div className="p-4 rounded-xl bg-slate-800/50">
+            <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+              <DollarSign size={18} className="text-green-400" />
+              Financial Summary
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+              <div>
+                <div className="text-slate-400">Total Revenue</div>
+                <div className="font-semibold text-white">{fmt(totalRevenue)}</div>
+              </div>
+              <div>
+                <div className="text-slate-400">Total Expenses (Salaries)</div>
+                <div className="font-semibold text-white">{fmt(totalExpenses)}</div>
+              </div>
+              <div>
+                <div className="text-slate-400">Net Profit</div>
+                <div className={`font-semibold ${netProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmt(netProfit)}</div>
+              </div>
+              <div>
+                <div className="text-slate-400">Projects</div>
+                <div className="font-semibold text-white">{projects.length}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Employee Salaries */}
+          <div>
+            <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+              <BarChart3 size={18} className="text-amber-400" />
+              Employee Salaries (this month)
+            </h3>
+            <div className="rounded-xl bg-slate-800/50 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-700">
+                    <th className="text-left p-3 text-slate-400 font-medium">Employee</th>
+                    <th className="text-right p-3 text-slate-400 font-medium">Salary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {employeeSalaries.length === 0 ? (
+                    <tr><td colSpan={2} className="p-3 text-slate-500">No assigned costs</td></tr>
+                  ) : (
+                    employeeSalaries.map(({ name, cost }) => (
+                      <tr key={name} className="border-b border-slate-700/50">
+                        <td className="p-3 text-white">{name}</td>
+                        <td className="p-3 text-right font-medium text-white">{fmt(cost)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* By Freelance Profile */}
+          <div>
+            <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+              <TrendingUp size={18} className="text-orange-400" />
+              Business by Freelance Profile
+            </h3>
+            <div className="rounded-xl bg-slate-800/50 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-700">
+                    <th className="text-left p-3 text-slate-400 font-medium">Profile</th>
+                    <th className="text-right p-3 text-slate-400 font-medium">Projects</th>
+                    <th className="text-right p-3 text-slate-400 font-medium">Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byProfile.length === 0 ? (
+                    <tr><td colSpan={3} className="p-3 text-slate-500">No profile breakdown</td></tr>
+                  ) : (
+                    byProfile.map((r) => (
+                      <tr key={r.id ?? r.name} className="border-b border-slate-700/50">
+                        <td className="p-3 text-white">{r.name}</td>
+                        <td className="p-3 text-right text-slate-300">{r.count}</td>
+                        <td className="p-3 text-right font-medium text-white">{fmt(r.revenue)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* By Agency */}
+          <div>
+            <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+              <FileText size={18} className="text-blue-400" />
+              Business by Agency
+            </h3>
+            <div className="rounded-xl bg-slate-800/50 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-700">
+                    <th className="text-left p-3 text-slate-400 font-medium">Agency</th>
+                    <th className="text-right p-3 text-slate-400 font-medium">Projects</th>
+                    <th className="text-right p-3 text-slate-400 font-medium">Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byAgency.length === 0 ? (
+                    <tr><td colSpan={3} className="p-3 text-slate-500">No agency breakdown</td></tr>
+                  ) : (
+                    byAgency.map((r) => (
+                      <tr key={r.id} className="border-b border-slate-700/50">
+                        <td className="p-3 text-white">{r.name}</td>
+                        <td className="p-3 text-right text-slate-300">{r.count}</td>
+                        <td className="p-3 text-right font-medium text-white">{fmt(r.revenue)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* By Brand */}
+          <div>
+            <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+              <FileText size={18} className="text-purple-400" />
+              Business by Brand
+            </h3>
+            <div className="rounded-xl bg-slate-800/50 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-700">
+                    <th className="text-left p-3 text-slate-400 font-medium">Brand</th>
+                    <th className="text-right p-3 text-slate-400 font-medium">Projects</th>
+                    <th className="text-right p-3 text-slate-400 font-medium">Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byBrand.length === 0 ? (
+                    <tr><td colSpan={3} className="p-3 text-slate-500">No brand breakdown</td></tr>
+                  ) : (
+                    byBrand.map((r) => (
+                      <tr key={r.id} className="border-b border-slate-700/50">
+                        <td className="p-3 text-white">{r.name}</td>
+                        <td className="p-3 text-right text-slate-300">{r.count}</td>
+                        <td className="p-3 text-right font-medium text-white">{fmt(r.revenue)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Archived Projects List */}
           <div>
             <h3 className="font-semibold text-white mb-3">Archived Projects ({projects.length})</h3>
             <div className="space-y-2">
-              {projects.map(project => (
-                <div key={project.id} className="p-3 rounded-xl bg-slate-800/50">
-                  <div className="font-semibold text-white">{project.project_name}</div>
-                  <div className="text-sm text-slate-400 mt-1">
-                    {project.client_name} • {project.platform} • {fmt(convert(project.amount || 0, project.currency || 'USD', currency, rate))}
+              {projects.map(project => {
+                const teamCost = Number(project.team_cost) ?? 0;
+                const profit = Number(project.profit) ?? (Number(project.amount) || 0) - teamCost;
+                return (
+                  <div key={project.id} className="p-3 rounded-xl bg-slate-800/50">
+                    <div className="font-semibold text-white">{project.project_name}</div>
+                    <div className="text-sm text-slate-400 mt-1">
+                      {project.client_name} • {project.platform} • {fmt(convert(project.amount || 0, project.currency || 'USD', currency, rate))}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-0">
+                      <span>Team cost: {fmt(convert(teamCost, project.currency || 'USD', currency, rate))}</span>
+                      <span>Profit: {fmt(convert(profit, project.currency || 'USD', currency, rate))}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
