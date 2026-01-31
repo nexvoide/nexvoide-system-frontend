@@ -406,15 +406,19 @@ function MonthDetailsModal({ month, projects, financeSnapshot, profiles = [], ag
       rev += orderDisplay;
 
       const assigned = ensureAssigned(p.assigned);
+      const costType = a => a.costType ?? a.cost_type ?? 'fixed';
+      const costValue = a => Number(a.costValue ?? a.cost_value ?? 0) || 0;
       for (const a of assigned) {
-        const name = a.name || 'Unknown';
+        const name = a.name || a.employee_name || 'Unknown';
         if (!empMap[name]) empMap[name] = 0;
-        if (a.costType === 'percentage') {
-          const cost = orderDisplay * (Number(a.costValue) || 0) / 100;
+        const type = costType(a);
+        const val = costValue(a);
+        if (type === 'percentage') {
+          const cost = orderDisplay * val / 100;
           empMap[name] += cost;
           exp += cost;
         } else {
-          const cost = convert(Number(a.costValue) || 0, 'PKR', currency, rate);
+          const cost = convert(val, 'PKR', currency, rate);
           empMap[name] += cost;
           exp += cost;
         }
