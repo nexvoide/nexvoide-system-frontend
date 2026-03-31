@@ -24,6 +24,7 @@ import {
   useFilteredProjects,
 } from "../hooks/useRoleFilter.js";
 import { hasPermission, PERMISSIONS } from "../utils/permissions.js";
+import { belongsToBalanceMonth, toYearMonth } from "../utils/projectMonth.js";
 
 export default function HR() {
   const {
@@ -71,13 +72,6 @@ export default function HR() {
   const safeEmployees = Array.isArray(employees) ? employees : [];
   const safeProjects = Array.isArray(projects) ? projects : [];
 
-  const ym = (str) => {
-    if (!str) return "";
-    const d = new Date(str);
-    if (isNaN(d)) return "";
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  };
-
   // Helper to ensure assigned is always an array
   const ensureAssigned = (assigned) => {
     if (Array.isArray(assigned)) return assigned;
@@ -111,20 +105,9 @@ export default function HR() {
       // Skip archived projects (they're in archived_projects table, not active projects)
       if (p.archived === true) continue;
       
-      // Check if project was pulled forward
-      const isPulledForward = p.pulled_forward === true || p.pulledForward === true;
-      
-      // Get project's date month (prefer startDate for pulled-forward projects)
-      // When a project is pulled forward, its start_date is updated to the next month
-      const projectDate = isPulledForward ? (p.startDate || p.start_date) : (p.endDate || p.end_date || p.startDate || p.start_date);
-      const m = projectDate ? ym(projectDate) : month;
-      
-      // Include project if:
-      // 1. Its date matches the selected month, OR
-      // 2. It was pulled forward and we're viewing the current month (pulled-forward projects belong to current/new month)
-      const currentMonth = ym(new Date().toISOString());
-      const belongsToMonth = m === month || (isPulledForward && month === currentMonth);
-      
+      const currentMonth = toYearMonth(new Date().toISOString());
+      const belongsToMonth = belongsToBalanceMonth(p, month, currentMonth);
+
       if (!belongsToMonth) continue;
       const assignedArray = ensureAssigned(p.assigned);
       const projectQuantity = Number(p.quantity) || 0;

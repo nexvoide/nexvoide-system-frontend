@@ -25,6 +25,7 @@ import {
   useCanViewActivityLogs,
 } from "../hooks/useRoleFilter.js";
 import { ROLES, normalizeRoles, hasRole } from "../utils/permissions.js";
+import { belongsToBalanceMonth, toYearMonth } from "../utils/projectMonth.js";
 import Avatar from "../components/Avatar.jsx";
 
 export default function Dashboard() {
@@ -771,10 +772,14 @@ export default function Dashboard() {
     if (!userId) return 0;
     
     let totalEarnings = 0;
+    const currentMonth = toYearMonth(new Date().toISOString());
     
     for (const p of projects) {
       // Skip archived projects (they're in archived_projects table, not active projects)
       if (p.archived === true) continue;
+
+      const belongsToMonth = belongsToBalanceMonth(p, currentMonth, currentMonth);
+      if (!belongsToMonth) continue;
       
       const assignedArray = ensureAssigned(p.assigned);
       
@@ -896,7 +901,7 @@ export default function Dashboard() {
     return [
       {
         key: "myearnings",
-        label: "My Earnings",
+        label: "My Earnings (This Month)",
         value: employeeEarnings,
         icon: Wallet,
         color: "text-blue-400",
