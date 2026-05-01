@@ -20,6 +20,20 @@ export function getCurrentMonthYear() {
 }
 
 /**
+ * Get the month that should normally be closed.
+ * Example: on May 1, you usually close April.
+ */
+export function getClosableMonthYear() {
+  const now = new Date();
+  const closable = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return {
+    year: closable.getFullYear(),
+    month: closable.getMonth() + 1,
+    monthLabel: closable.toLocaleString('default', { month: 'long', year: 'numeric' })
+  };
+}
+
+/**
  * Get month label from year and month
  */
 export function getMonthLabel(year, month) {
@@ -163,6 +177,24 @@ export async function getProjectsForMonth(year, month, includeArchived = true) {
     console.error('Error getting projects for month:', error);
     return [];
   }
+}
+
+function isDateInRange(d, startDate, endDate) {
+  if (!d) return false;
+  return d >= startDate && d <= endDate;
+}
+
+function wasProjectActiveInMonth(project, startDate, endDate) {
+  const projectStart = project.start_date ? new Date(project.start_date) : (project.startDate ? new Date(project.startDate) : null);
+  const projectEnd = project.end_date ? new Date(project.end_date) : (project.endDate ? new Date(project.endDate) : null);
+  const projectCreated = project.created_at ? new Date(project.created_at) : null;
+
+  // Same “in month” logic used in getProjectsForMonth (minus pulled_forward shortcut)
+  if (projectCreated && isDateInRange(projectCreated, startDate, endDate)) return true;
+  if (projectStart && isDateInRange(projectStart, startDate, endDate)) return true;
+  if (projectEnd && isDateInRange(projectEnd, startDate, endDate)) return true;
+  if (projectStart && projectEnd && projectStart <= startDate && projectEnd >= endDate) return true;
+  return false;
 }
 
 /**
@@ -596,7 +628,8 @@ export async function closeMonth(year, month, userId, options = {}) {
           .update({ 
             archived: true,
             archived_month_id: archivedMonth.id,
-            status: 'Completed' // Ensure status is Completed
+            status: 'Completed', // Ensure status is Completed
+            pulled_forward: false // Important: don't let completed projects appear in next month
           })
           .eq('id', project.id)
           .select(); // Select to verify update
@@ -620,6 +653,58 @@ export async function closeMonth(year, month, userId, options = {}) {
     } catch (error) {
       console.error(`Error archiving project ${project.id}:`, error);
     }
+  }
+
+  // Repair pass:
+  // If any completed project that belongs to this month failed to archive (or wasn’t included),
+  // archive it now so it doesn’t leak into the next month’s “Completed” list.
+  try {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    const monthCompleted = allProjects.filter(p => isProjectCompleted(p) && wasProjectActiveInMonth(p, startDate, endDate));
+    const alreadyArchivedIds = new Set(archivedProjects.map(p => String(p.original_project_id || '').trim()).filter(Boolean));
+
+    for (const project of monthCompleted) {
+      const projectId = String(project.id || '').trim();
+      if (!projectId) continue;
+      if (alreadyArchivedIds.has(projectId)) continue;
+
+      // Double-check current DB state to avoid duplicating archive rows
+      const { data: dbRow } = await supabase
+        .from('projects')
+        .select('id, archived, archived_month_id, pulled_forward, status')
+        .eq('id', projectId)
+        .maybeSingle();
+
+      if (dbRow?.archived === true && String(dbRow.archived_month_id || '') === String(archivedMonth.id)) {
+        continue;
+      }
+
+      console.warn(`🛠️ Repair archive: archiving missed completed project ${projectId}`);
+
+      try {
+        await archiveProject(project, archivedMonth.id, currency, rate);
+      } catch (e) {
+        console.error(`🛠️ Repair archive failed to insert archived_projects for ${projectId}:`, e);
+      }
+
+      try {
+        await supabase
+          .from('projects')
+          .update({
+            archived: true,
+            archived_month_id: archivedMonth.id,
+            status: 'Completed',
+            pulled_forward: false
+          })
+          .eq('id', projectId);
+      } catch (e) {
+        console.error(`🛠️ Repair archive failed to update projects row for ${projectId}:`, e);
+      }
+    }
+  } catch (repairError) {
+    console.warn('🛠️ Repair archive pass failed:', repairError);
   }
   
   // Pull forward projects - mark them as pulled forward
@@ -904,5 +989,79 @@ export async function getFinanceSnapshot(archivedMonthId) {
     console.error('Error getting finance snapshot:', error);
     return null;
   }
+}
+
+/**
+ * Restore an archived month back to active projects.
+ * - Unarchives linked projects (by original_project_id)
+ * - Removes archived month snapshot (cascade removes archived projects/snapshots)
+ */
+export async function restoreArchivedMonth(archivedMonthId) {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase not configured. Cannot restore archived month.');
+  }
+
+  // Load archived projects for this month first (needed before cascade delete)
+  const { data: archivedProjects, error: archivedError } = await supabase
+    .from('archived_projects')
+    .select('id, original_project_id, status')
+    .eq('archived_month_id', archivedMonthId);
+
+  if (archivedError) throw archivedError;
+
+  let restoredCount = 0;
+  let skippedCount = 0;
+
+  const projectIds = (archivedProjects || [])
+    .map(p => p.original_project_id)
+    .filter(Boolean);
+
+  if (projectIds.length > 0) {
+    const { data: updated, error: updateError } = await supabase
+      .from('projects')
+      .update({
+        archived: false,
+        archived_month_id: null,
+        pulled_forward: false
+      })
+      .in('id', projectIds)
+      .select('id');
+
+    if (updateError) throw updateError;
+    restoredCount = updated?.length || 0;
+    skippedCount = projectIds.length - restoredCount;
+  }
+
+  // Delete archived month record (cascades archived_projects + finance snapshot)
+  const { error: deleteMonthError } = await supabase
+    .from('archived_months')
+    .delete()
+    .eq('id', archivedMonthId);
+
+  if (deleteMonthError) throw deleteMonthError;
+
+  return {
+    restoredCount,
+    skippedCount,
+    archivedProjectCount: archivedProjects?.length || 0
+  };
+}
+
+/**
+ * Permanently delete an archived month snapshot.
+ * Note: This does NOT restore projects; it only removes archive records.
+ */
+export async function deleteArchivedMonth(archivedMonthId) {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase not configured. Cannot delete archived month.');
+  }
+
+  const { error } = await supabase
+    .from('archived_months')
+    .delete()
+    .eq('id', archivedMonthId);
+
+  if (error) throw error;
+  return { deleted: true };
 }
 

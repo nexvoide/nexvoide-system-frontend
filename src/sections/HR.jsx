@@ -11,6 +11,7 @@ import {
   Mail,
   Phone,
   Building2,
+  Calendar,
   CreditCard,
   Briefcase,
   TrendingUp,
@@ -24,6 +25,7 @@ import {
   useFilteredProjects,
 } from "../hooks/useRoleFilter.js";
 import { hasPermission, PERMISSIONS } from "../utils/permissions.js";
+import { belongsToBalanceMonth, toYearMonth } from "../utils/projectMonth.js";
 
 export default function HR() {
   const {
@@ -71,13 +73,6 @@ export default function HR() {
   const safeEmployees = Array.isArray(employees) ? employees : [];
   const safeProjects = Array.isArray(projects) ? projects : [];
 
-  const ym = (str) => {
-    if (!str) return "";
-    const d = new Date(str);
-    if (isNaN(d)) return "";
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  };
-
   // Helper to ensure assigned is always an array
   const ensureAssigned = (assigned) => {
     if (Array.isArray(assigned)) return assigned;
@@ -93,6 +88,7 @@ export default function HR() {
   };
 
   const stats = useMemo(() => {
+    const completedStatuses = new Set(["Completed", "completed", "Done", "done"]);
     const map = new Map();
     // Initialize map with all employees - handle both camelCase and snake_case
     for (const emp of safeEmployees) {
@@ -111,21 +107,11 @@ export default function HR() {
       // Skip archived projects (they're in archived_projects table, not active projects)
       if (p.archived === true) continue;
       
-      // Check if project was pulled forward
-      const isPulledForward = p.pulled_forward === true || p.pulledForward === true;
-      
-      // Get project's date month (prefer startDate for pulled-forward projects)
-      // When a project is pulled forward, its start_date is updated to the next month
-      const projectDate = isPulledForward ? (p.startDate || p.start_date) : (p.endDate || p.end_date || p.startDate || p.start_date);
-      const m = projectDate ? ym(projectDate) : month;
-      
-      // Include project if:
-      // 1. Its date matches the selected month, OR
-      // 2. It was pulled forward and we're viewing the current month (pulled-forward projects belong to current/new month)
-      const currentMonth = ym(new Date().toISOString());
-      const belongsToMonth = m === month || (isPulledForward && month === currentMonth);
-      
+      const currentMonth = toYearMonth(new Date().toISOString());
+      const belongsToMonth = belongsToBalanceMonth(p, month, currentMonth);
+
       if (!belongsToMonth) continue;
+      if (!completedStatuses.has(p.status)) continue;
       const assignedArray = ensureAssigned(p.assigned);
       const projectQuantity = Number(p.quantity) || 0;
       const revisionQty = Number(p.revisionQuantity) || 0;
@@ -263,6 +249,16 @@ export default function HR() {
         />
         <div className='flex-1 hidden md:block' />
         <div className="flex items-center gap-2 flex-shrink-0">
+          <div className='inline-flex items-center gap-2 px-2 h-10 rounded-xl bg-slate-800/50 border border-slate-700'>
+            <Calendar size={14} className='text-slate-400' />
+            <input
+              type='month'
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              className='bg-transparent text-white text-sm outline-none border-none'
+              title='Salary month filter'
+            />
+          </div>
           <button
             className='btn btn-secondary inline-flex items-center gap-2 text-sm'
             onClick={async () => {

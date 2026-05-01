@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="180" height="36" viewBox="0 0 180 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Placeholder Nexvoide wordmark: blue N + white text on transparent bg -->
+  <g>
+    <!-- Blue N -->
+    <path d="M6 30 C6 30 6 26 6 18 C6 10 6 6 6 6 M6 6 C6 6 10 6 18 6 C26 6 30 6 30 6 M6 30 C6 30 10 30 18 24 C26 18 30 14 30 14 M30 14 C30 14 30 18 30 24 C30 26 30 30 30 30" stroke="#2642FF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- Nexvoide text -->
+    <g fill="#FFFFFF" transform="translate(38,8)">
+      <path d="M0 20 V0 H4 L12 12 V0 H16 V20 H12 L4 8 V20 H0 Z" />
+      <rect x="20" y="0" width="12" height="4" rx="2" />
+      <rect x="20" y="8" width="12" height="4" rx="2" />
+      <rect x="20" y="16" width="12" height="4" rx="2" />
+      <path d="M40 20 V0 H44 V20 H40 Z" />
+      <path d="M50 16 C50 13 52 12 56 12 H60 V10 C60 9 59 8 56 8 C54 8 52 8 50 9 V6 C52 5 54 4 56 4 C62 4 64 6 64 10 V20 H60 V18 C59 19 57 20 55 20 C52 20 50 19 50 16 Z M60 14 H56 C54 14 53 15 53 16 C53 17 54 18 56 18 C58 18 60 17 60 16 V14 Z"/>
+      <path d="M70 20 V0 H74 V20 H70 Z" />
+      <path d="M80 12 C80 7 84 4 89 4 C94 4 98 7 98 12 C98 17 94 20 89 20 C84 20 80 17 80 12 Z M93.9 12 C93.9 9.2 92 7.9 89 7.9 C86 7.9 84.1 9.2 84.1 12 C84.1 14.8 86 16.1 89 16.1 C92 16.1 93.9 14.8 93.9 12 Z"/>
+      <path d="M104 20 V0 H108 V8 C109 6 111 4 114 4 C118 4 120 6 120 10 V20 H116 V11 C116 9 115 8 113 8 C111 8 109 10 108 12 V20 H104 Z"/>
+      <path d="M128 12 C128 7 132 4 137 4 C140 4 143 5 145 6 V9 C143 8 141 7.9 139 7.9 C136 7.9 134.1 9.2 134.1 12 C134.1 14.8 136 16.1 139 16.1 C141 16.1 143 16 145 15 V18 C143 19 140 20 137 20 C132 20 128 17 128 12 Z"/>
+    </g>
+  </g>
+</svg>
+
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 25.3.1, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 1886.4 400.3" style="enable-background:new 0 0 1886.4 400.3;" xml:space="preserve">
+<image style="overflow:visible;" width="4500" height="874" xlink:href="../PNG/Nexvoide 2.png"  transform="matrix(0.4192 0 0 0.4192 0 16.9696)">
+</image>
+</svg>

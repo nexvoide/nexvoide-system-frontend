@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, AlertTriangle, Calendar, CheckCircle, Loader } from 'lucide-react';
-import { getCurrentMonthYear, getMonthLabel, closeMonth } from '../../utils/monthlyClosing.js';
+import { getClosableMonthYear, getMonthLabel, closeMonth } from '../../utils/monthlyClosing.js';
 import { useAppStore } from '../../stores/appStore.js';
 import ProjectReviewDialog from './ProjectReviewDialog.jsx';
 
@@ -13,7 +13,7 @@ export default function MonthlyClosingDialog({ open, onClose, onSuccess }) {
   const [error, setError] = useState(null);
   const [closeResult, setCloseResult] = useState(null);
   
-  const current = getCurrentMonthYear();
+  const current = getClosableMonthYear();
   const monthLabel = getMonthLabel(current.year, current.month);
 
   const handleStartReview = () => {
