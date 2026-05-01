@@ -774,12 +774,15 @@ export default function Dashboard() {
     
     let totalEarnings = 0;
     const currentMonth = activeMonth || toYearMonth(new Date().toISOString());
-    const completedStatuses = new Set(["Completed", "completed", "Done", "done"]);
+    const isCompletedStatus = (status) => {
+      const normalized = String(status || "").trim().toLowerCase();
+      return normalized === "completed" || normalized === "complete" || normalized === "done";
+    };
     
     for (const p of projects) {
       // Skip archived projects (they're in archived_projects table, not active projects)
       if (p.archived === true) continue;
-      if (!completedStatuses.has(p.status)) continue;
+      if (!isCompletedStatus(p.status)) continue;
 
       const belongsToMonth = belongsToBalanceMonth(p, currentMonth, currentMonth);
       if (!belongsToMonth) continue;

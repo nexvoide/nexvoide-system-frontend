@@ -21,9 +21,27 @@ export function getBalanceMonth(project) {
 
   const startDate = project.startDate || project.start_date || "";
   const endDate = project.endDate || project.end_date || "";
+  const updatedAt = project.updatedAt || project.updated_at || "";
+  const createdAt = project.createdAt || project.created_at || "";
+  const deadline = project.deadline || "";
 
-  if (isPulledForward) return toYearMonth(startDate) || toYearMonth(endDate);
-  return toYearMonth(endDate) || toYearMonth(startDate);
+  if (isPulledForward) {
+    return (
+      toYearMonth(startDate) ||
+      toYearMonth(endDate) ||
+      toYearMonth(updatedAt) ||
+      toYearMonth(createdAt) ||
+      toYearMonth(deadline)
+    );
+  }
+
+  return (
+    toYearMonth(endDate) ||
+    toYearMonth(startDate) ||
+    toYearMonth(updatedAt) ||
+    toYearMonth(createdAt) ||
+    toYearMonth(deadline)
+  );
 }
 
 /**
@@ -33,6 +51,23 @@ export function getBalanceMonth(project) {
 export function belongsToBalanceMonth(project, targetMonth, currentMonth) {
   if (!project || !targetMonth) return false;
   if (!currentMonth) return getBalanceMonth(project) === targetMonth;
+
+  const archivedMonthId = project.archived_month_id ?? project.archivedMonthId;
+  const isArchived =
+    project.archived === true ||
+    project.archived === 1 ||
+    String(project.archived || "").trim().toLowerCase() === "true" ||
+    (archivedMonthId !== null &&
+      archivedMonthId !== undefined &&
+      String(archivedMonthId).trim() !== "");
+
+  // Manual month-closing mode:
+  // While target month is the currently active month, keep all non-archived
+  // active projects inside that month bucket until month is closed.
+  if (targetMonth === currentMonth && !isArchived && !isPulledForwardProject(project)) {
+    return true;
+  }
+
   if (isPulledForwardProject(project) && targetMonth === currentMonth) return true;
   return getBalanceMonth(project) === targetMonth;
 }
