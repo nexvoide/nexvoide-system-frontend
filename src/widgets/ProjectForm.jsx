@@ -7,7 +7,7 @@ import { notifyAssignedEmployees } from "../utils/whatsapp.js";
 import { uploadFile, deleteFile } from "../utils/storage.js";
 import { notifyProjectAssignment } from "../utils/notificationHelpers.js";
 
-export default function ProjectForm({ editing, onDone, triggerLabel }) {
+export default function ProjectForm({ editing, onDone, triggerLabel, initialBillingModel = "project" }) {
   const { addProject, updateProject, profiles, agencies, brands, employees, rate, user, userRole, allUsers } = useAppStore();
   const [form, setForm] = useState({
     platform: "Fiverr",
@@ -30,6 +30,15 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
     rawSourceLinks: [""],
     attachments: [],
     notes: ""
+    ,
+    billingModel: initialBillingModel,
+    monthlyIncludedHours: "",
+    monthlyBasePrice: "",
+    employeeMonthlyBasePayoutPkr: "",
+    extraHourRate: "",
+    employeeExtraHourRatePkr: "",
+    subscriptionStartDate: "",
+    subscriptionEndDate: ""
   });
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
@@ -59,6 +68,15 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
     rawSourceLinks: [""],
     attachments: [],
     notes: ""
+    ,
+    billingModel: initialBillingModel,
+    monthlyIncludedHours: "",
+    monthlyBasePrice: "",
+    employeeMonthlyBasePayoutPkr: "",
+    extraHourRate: "",
+    employeeExtraHourRatePkr: "",
+    subscriptionStartDate: "",
+    subscriptionEndDate: ""
   });
 
   // Helper function to convert deadline to datetime-local format
@@ -138,7 +156,15 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
         attachments,
         rawSourceLinks,
         deadline: formattedDeadline,
-        notes: editing.notes || ""
+        notes: editing.notes || "",
+        billingModel: editing.billingModel || editing.billing_model || "project",
+        monthlyIncludedHours: editing.monthlyIncludedHours || editing.monthly_included_hours || "",
+        monthlyBasePrice: editing.monthlyBasePrice || editing.monthly_base_price || "",
+        employeeMonthlyBasePayoutPkr: editing.employeeMonthlyBasePayoutPkr || editing.employee_monthly_base_payout_pkr || "",
+        extraHourRate: editing.extraHourRate || editing.extra_hour_rate || "",
+        employeeExtraHourRatePkr: editing.employeeExtraHourRatePkr || editing.employee_extra_hour_rate_pkr || "",
+        subscriptionStartDate: editing.subscriptionStartDate || editing.subscription_start_date || "",
+        subscriptionEndDate: editing.subscriptionEndDate || editing.subscription_end_date || ""
       });
     } else {
       setForm(getDefaultForm());
@@ -314,14 +340,27 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
       
       const payload = {
         ...form,
-        quantity: form.isRevision ? null : quantityValue,
-        revisionQuantity: form.isRevision ? quantityValue : null,
+        quantity: form.billingModel === "subscription" ? null : (form.isRevision ? null : quantityValue),
+        revisionQuantity: form.billingModel === "subscription" ? null : (form.isRevision ? quantityValue : null),
         amount: Number(form.amount) || 0,
-        assigned: (form.assigned || []).filter((a) => a.name).map((a) => ({ ...a, costValue: Number(a.costValue) || 0 })),
+        assigned: (form.assigned || []).filter((a) => a.name).map((a) => (
+          form.billingModel === "subscription"
+            ? { name: a.name }
+            : { ...a, costValue: Number(a.costValue) || 0 }
+        )),
         deadline: deadlineValue,
         rawSourceLink: rawSourceLinkValue,
         rawSourceLinks: undefined,
         notes: form.notes || ""
+        ,
+        billingModel: form.billingModel || "project",
+        monthlyIncludedHours: form.billingModel === "subscription" ? (Number(form.monthlyIncludedHours) || 0) : null,
+        monthlyBasePrice: form.billingModel === "subscription" ? (Number(form.monthlyBasePrice) || 0) : null,
+        employeeMonthlyBasePayoutPkr: form.billingModel === "subscription" ? (Number(form.employeeMonthlyBasePayoutPkr) || 0) : null,
+        extraHourRate: Number(form.extraHourRate) || 0,
+        employeeExtraHourRatePkr: form.billingModel === "subscription" ? (Number(form.employeeExtraHourRatePkr) || 0) : null,
+        subscriptionStartDate: form.billingModel === "subscription" ? (form.subscriptionStartDate || null) : null,
+        subscriptionEndDate: form.billingModel === "subscription" ? (form.subscriptionEndDate || null) : null
       };
       
       // Get old assigned employees for comparison (if editing)
@@ -423,7 +462,7 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
             <div className="relative w-full max-w-2xl rounded-none sm:rounded-xl md:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden min-h-full sm:min-h-0 max-h-full sm:max-h-[90vh] flex flex-col my-0 sm:my-auto" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between px-4 sm:px-4 md:px-5 py-3 sm:py-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0 sticky top-0 bg-white dark:bg-slate-950 z-10">
-                <div className="text-base sm:text-base md:text-lg font-semibold">{editing ? "Edit Project" : "New Project"}</div>
+                <div className="text-base sm:text-base md:text-lg font-semibold">{editing ? "Edit Project" : (initialBillingModel === "subscription" ? "New Subscription" : "New Project")}</div>
                 <button type="button" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 touch-manipulation hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center" onClick={handleClose}><X size={18}/></button>
               </div>
               <form onSubmit={submit} className="px-4 sm:px-4 md:px-5 py-4 sm:py-4 overflow-y-auto flex-1 scrollbar-thin pb-safe">
@@ -508,42 +547,51 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
         )}
       </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
         <div>
           <label className="text-xs text-slate-500">Project name</label>
           <input className="glass w-full px-3 h-11 rounded-xl" value={form.projectName} onChange={(e) => set("projectName", e.target.value)} />
         </div>
-        <div>
-          <label className="text-xs text-slate-500">Project value</label>
-          <div className="flex gap-2">
-            <select className="glass px-3 h-11 rounded-xl" value={form.currency} onChange={(e) => set("currency", e.target.value)}>
-              <option>USD</option>
-              <option>PKR</option>
-            </select>
-            <input className="glass w-full px-3 h-11 rounded-xl" type="number" step="0.01" value={form.amount} onChange={(e) => set("amount", e.target.value)} />
+        {form.billingModel !== "subscription" && (
+          <div>
+            <label className="text-xs text-slate-500">Project value</label>
+            <div className="flex gap-2">
+              <select className="glass px-3 h-11 rounded-xl" value={form.currency} onChange={(e) => set("currency", e.target.value)}>
+                <option>USD</option>
+                <option>PKR</option>
+              </select>
+              <input className="glass w-full px-3 h-11 rounded-xl" type="number" step="0.01" value={form.amount} onChange={(e) => set("amount", e.target.value)} />
+            </div>
           </div>
+        )}
+      </div>
+      
+
+      {form.billingModel !== "subscription" && (
+        <div className="mt-3">
+          <label className="flex items-center gap-2 cursor-pointer p-3 rounded-xl bg-slate-50 dark:bg-slate-800/30 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors">
+            <input
+              type="checkbox"
+              className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500"
+              checked={form.isRevision || false}
+              onChange={(e) => set("isRevision", e.target.checked)}
+            />
+            <span className="text-sm text-slate-700 dark:text-slate-300">This is a paid revision project</span>
+          </label>
         </div>
-      </div>
+      )}
 
-      <div className="mt-3">
-        <label className="flex items-center gap-2 cursor-pointer p-3 rounded-xl bg-slate-50 dark:bg-slate-800/30 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors">
-          <input
-            type="checkbox"
-            className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500"
-            checked={form.isRevision || false}
-            onChange={(e) => set("isRevision", e.target.checked)}
-          />
-          <span className="text-sm text-slate-700 dark:text-slate-300">This is a paid revision project</span>
-        </label>
+      <div className="text-xs uppercase tracking-wider text-slate-500 mt-3">
+        {form.billingModel === "subscription" ? "Assigned employee(s)" : "Assigned employee(s) & cost"}
       </div>
-
-      <div className="text-xs uppercase tracking-wider text-slate-500 mt-3">Assigned employee(s) & cost</div>
       <AssignFromHR onPick={(emp)=>{
         setForm(f=>({
           ...f,
           assigned: [
             ...(f.assigned||[]),
-            { name: emp.name, costType: 'fixed', costValue: '' }
+            form.billingModel === "subscription"
+              ? { name: emp.name }
+              : { name: emp.name, costType: 'fixed', costValue: '' }
           ]
         }));
       }} />
@@ -552,22 +600,24 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
           <div className="text-slate-500 text-sm">No employees assigned yet.</div>
         )}
         {(form.assigned || []).map((a, i) => (
-          <div key={i} className="glass rounded-xl px-3 py-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div key={i} className={`glass rounded-xl px-3 py-2 grid gap-2 ${form.billingModel === "subscription" ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-3"}`}>
             <div className="sm:col-span-1 flex flex-col justify-end">
               <label className="text-xs text-slate-500 mb-1">Employee</label>
               <div className="font-medium h-9 flex items-center">{a.name || '-'}</div>
             </div>
-            <div className="sm:col-span-1 flex flex-col justify-end">
-              <label className="text-xs text-slate-500 mb-1">Employee Cost (PKR)</label>
-              <input
-                className="glass w-full px-3 h-9 rounded-xl"
-                type="number"
-                step="0.01"
-                value={a.costValue || ''}
-                onChange={(e) => setAssigned(i, "costValue", e.target.value)}
-                placeholder="0"
-              />
-            </div>
+            {form.billingModel !== "subscription" && (
+              <div className="sm:col-span-1 flex flex-col justify-end">
+                <label className="text-xs text-slate-500 mb-1">Employee Cost (PKR)</label>
+                <input
+                  className="glass w-full px-3 h-9 rounded-xl"
+                  type="number"
+                  step="0.01"
+                  value={a.costValue || ''}
+                  onChange={(e) => setAssigned(i, "costValue", e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            )}
             <div className="sm:col-span-1 flex flex-col justify-end">
               <label className="text-xs text-slate-500 mb-1 invisible">Remove</label>
               <button type="button" className="btn btn-secondary h-9 w-full" onClick={() => removeAssignee(i)}>Remove</button>
@@ -575,18 +625,53 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
           </div>
         ))}
       </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
         <div>
           <label className="text-xs text-slate-500">Service</label>
           <input className="glass w-full px-3 h-11 rounded-xl" value={form.service} onChange={(e) => set("service", e.target.value)} placeholder="e.g. Book cover design, Video editing" />
         </div>
-        <div>
-          <label className="text-xs text-slate-500">{form.isRevision ? "Revision Quantity" : "Quantity"}</label>
-          <input className="glass w-full px-3 h-11 rounded-xl" type="number" min="0" step="1" value={form.quantity} onChange={(e) => set("quantity", e.target.value)} placeholder={form.isRevision ? "e.g. 3 revisions" : "e.g. 10 videos, 2 book covers"} />
-        </div>
+        {form.billingModel !== "subscription" && (
+          <div>
+            <label className="text-xs text-slate-500">{form.isRevision ? "Revision Quantity" : "Quantity"}</label>
+            <input className="glass w-full px-3 h-11 rounded-xl" type="number" min="0" step="1" value={form.quantity} onChange={(e) => set("quantity", e.target.value)} placeholder={form.isRevision ? "e.g. 3 revisions" : "e.g. 10 videos, 2 book covers"} />
+          </div>
+        )}
       </div>
 
+      {form.billingModel === "subscription" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+          <div>
+            <label className="text-xs text-slate-500">Monthly included hours</label>
+            <input className="glass w-full px-3 h-11 rounded-xl" type="number" min="0" step="0.25" value={form.monthlyIncludedHours || ""} onChange={(e) => set("monthlyIncludedHours", e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">Monthly base price</label>
+            <input className="glass w-full px-3 h-11 rounded-xl" type="number" min="0" step="0.01" value={form.monthlyBasePrice || ""} onChange={(e) => set("monthlyBasePrice", e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">Employee monthly base payout (PKR)</label>
+            <input className="glass w-full px-3 h-11 rounded-xl" type="number" min="0" step="0.01" value={form.employeeMonthlyBasePayoutPkr || ""} onChange={(e) => set("employeeMonthlyBasePayoutPkr", e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">Customer extra hour rate</label>
+            <input className="glass w-full px-3 h-11 rounded-xl" type="number" min="0" step="0.01" value={form.extraHourRate || ""} onChange={(e) => set("extraHourRate", e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">Employee extra hour rate (PKR)</label>
+            <input className="glass w-full px-3 h-11 rounded-xl" type="number" min="0" step="0.01" value={form.employeeExtraHourRatePkr || ""} onChange={(e) => set("employeeExtraHourRatePkr", e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">Subscription start</label>
+            <input className="glass w-full px-3 h-11 rounded-xl" type="date" value={form.subscriptionStartDate || ""} onChange={(e) => set("subscriptionStartDate", e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">Subscription end (optional)</label>
+            <input className="glass w-full px-3 h-11 rounded-xl" type="date" value={form.subscriptionEndDate || ""} onChange={(e) => set("subscriptionEndDate", e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      {form.billingModel !== "subscription" && (
       <div className="mt-3">
         <div className="flex items-center justify-between gap-2">
           <label className="text-xs text-slate-500">
@@ -631,7 +716,9 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
           One link per field. Use the + button to add multiple sources.
         </div>
       </div>
+      )}
 
+      {form.billingModel !== "subscription" && (
       <div className="mt-3">
         <label className="text-xs text-slate-500 mb-1">
           Internal Notes / Instructions for Employee
@@ -643,6 +730,7 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
           placeholder="Write any important notes, instructions or context for the assigned employee. These will also be included in the WhatsApp message."
         />
       </div>
+      )}
 
       <div className="mt-3">
         <label className="text-xs text-slate-500 mb-2 block">Attachments (Files will auto-delete after 72 hours)</label>
@@ -739,7 +827,7 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
       </div>
 
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-4 pb-2">
-        <button className="btn btn-primary flex-1 sm:flex-none" type="submit">{editing ? "Save Changes" : "Create Project"}</button>
+        <button className="btn btn-primary flex-1 sm:flex-none" type="submit">{editing ? "Save Changes" : (form.billingModel === "subscription" ? "Create Subscription" : "Create Project")}</button>
         {editing && (
           <button type="button" className="btn btn-secondary flex-1 sm:flex-none" onClick={() => onDone && onDone()}>Cancel</button>
         )}

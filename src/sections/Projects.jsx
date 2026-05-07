@@ -4,11 +4,12 @@ import { Plus, Table, LayoutGrid } from "lucide-react";
 import { useAppStore, convert } from "../stores/appStore.js";
 import ProjectForm from "../widgets/ProjectForm.jsx";
 import ProjectCard from "../widgets/ProjectCard.jsx";
+import TimeEntryForm from "../widgets/TimeEntryForm.jsx";
 import { useFilteredProjects, useCanCreateProjects, useCanEditProjects, useCanDeleteProjects, useCanViewFinanceDetails } from "../hooks/useRoleFilter.js";
 import { ROLES, normalizeRoles, hasRole } from "../utils/permissions.js";
 
 export default function Projects() {
-  const { currency, rate, loading, user } = useAppStore();
+  const { currency, rate, loading, user, timeEntries, activeMonth } = useAppStore();
   const projects = useFilteredProjects(); // Use filtered projects based on role
   const canCreate = useCanCreateProjects();
   const canEdit = useCanEditProjects();
@@ -148,7 +149,11 @@ export default function Projects() {
             <LayoutGrid size={16}/>
           </button>
           {canCreate && (
-            <ProjectForm triggerLabel="New Project" editing={editing} onDone={()=>setEditing(null)} />
+            <>
+              <TimeEntryForm />
+              <ProjectForm triggerLabel="New Subscription" initialBillingModel="subscription" onDone={()=>setEditing(null)} />
+              <ProjectForm triggerLabel="New Project" initialBillingModel="project" editing={editing} onDone={()=>setEditing(null)} />
+            </>
           )}
         </div>
       </div>
@@ -167,9 +172,37 @@ export default function Projects() {
           {/* Mobile Card View for Table Mode */}
           <div className="block md:hidden space-y-2.5 sm:space-y-3 p-2.5 sm:p-3 w-full max-w-full">
             {filtered.map((p) => {
-              const order = convert(p.amount||0, p.currency, currency, rate);
+              const isSubscription = String(p.billingModel || p.billing_model || '').toLowerCase() === 'subscription';
+              const subscriptionBase = Number(p.monthlyBasePrice || p.monthly_base_price || p.amount || 0);
+              const order = isSubscription
+                ? convert(subscriptionBase, p.currency || 'USD', currency, rate)
+                : convert(p.amount || 0, p.currency, currency, rate);
               const assignedArray = ensureAssigned(p.assigned);
-              let emp=0; for(const a of assignedArray){ if(a.costType==='percentage') emp += order*(Number(a.costValue)||0)/100; else emp += convert(a.costValue||0, 'PKR', currency, rate); }
+              let emp = 0;
+              if (isSubscription) {
+                const employeeExtraRatePkr = Number(p.employeeExtraHourRatePkr || p.employee_extra_hour_rate_pkr || 0);
+                const basePayoutPkr = Number(p.employeeMonthlyBasePayoutPkr || p.employee_monthly_base_payout_pkr || 0);
+                const extraHours = (Array.isArray(timeEntries) ? timeEntries : [])
+                  .filter((entry) => {
+                    const projectId = String(entry.projectId || entry.project_id || '');
+                    if (projectId !== String(p.id)) return false;
+                    const isOvertime = Boolean(entry.isOvertime || entry.is_overtime);
+                    if (!isOvertime) return false;
+                    const entryDate = entry.entryDate || entry.entry_date;
+                    if (!entryDate || !activeMonth) return true;
+                    const d = new Date(entryDate);
+                    if (Number.isNaN(d.getTime())) return false;
+                    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                    return ym === activeMonth;
+                  })
+                  .reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0);
+                emp = convert(basePayoutPkr + (extraHours * employeeExtraRatePkr), 'PKR', currency, rate);
+              } else {
+                for (const a of assignedArray) {
+                  if (a.costType === 'percentage') emp += order * (Number(a.costValue) || 0) / 100;
+                  else emp += convert(a.costValue || 0, 'PKR', currency, rate);
+                }
+              }
               const profit = order-emp;
               const isUserAssigned = user && user.userId && assignedArray.some(a => {
                 const assignedName = a.name || '';
@@ -254,9 +287,37 @@ export default function Projects() {
             </thead>
             <tbody>
               {filtered.map((p) => {
-                const order = convert(p.amount||0, p.currency, currency, rate);
+                const isSubscription = String(p.billingModel || p.billing_model || '').toLowerCase() === 'subscription';
+                const subscriptionBase = Number(p.monthlyBasePrice || p.monthly_base_price || p.amount || 0);
+                const order = isSubscription
+                  ? convert(subscriptionBase, p.currency || 'USD', currency, rate)
+                  : convert(p.amount || 0, p.currency, currency, rate);
                 const assignedArray = ensureAssigned(p.assigned);
-                let emp=0; for(const a of assignedArray){ if(a.costType==='percentage') emp += order*(Number(a.costValue)||0)/100; else emp += convert(a.costValue||0, 'PKR', currency, rate); }
+                let emp = 0;
+                if (isSubscription) {
+                  const employeeExtraRatePkr = Number(p.employeeExtraHourRatePkr || p.employee_extra_hour_rate_pkr || 0);
+                  const basePayoutPkr = Number(p.employeeMonthlyBasePayoutPkr || p.employee_monthly_base_payout_pkr || 0);
+                  const extraHours = (Array.isArray(timeEntries) ? timeEntries : [])
+                    .filter((entry) => {
+                      const projectId = String(entry.projectId || entry.project_id || '');
+                      if (projectId !== String(p.id)) return false;
+                      const isOvertime = Boolean(entry.isOvertime || entry.is_overtime);
+                      if (!isOvertime) return false;
+                      const entryDate = entry.entryDate || entry.entry_date;
+                      if (!entryDate || !activeMonth) return true;
+                      const d = new Date(entryDate);
+                      if (Number.isNaN(d.getTime())) return false;
+                      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                      return ym === activeMonth;
+                    })
+                    .reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0);
+                  emp = convert(basePayoutPkr + (extraHours * employeeExtraRatePkr), 'PKR', currency, rate);
+                } else {
+                  for (const a of assignedArray) {
+                    if (a.costType === 'percentage') emp += order * (Number(a.costValue) || 0) / 100;
+                    else emp += convert(a.costValue || 0, 'PKR', currency, rate);
+                  }
+                }
                 const profit = order-emp;
                 
                 // Check if current user is assigned to this project

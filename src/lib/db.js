@@ -159,6 +159,14 @@ export const dbProjects = {
         start_date: project.start_date || null,
         end_date: project.end_date || null,
         deadline: project.deadline || null,
+        billing_model: project.billing_model || "project",
+        monthly_included_hours: project.monthly_included_hours !== undefined ? Number(project.monthly_included_hours) : null,
+        monthly_base_price: project.monthly_base_price !== undefined ? Number(project.monthly_base_price) : null,
+        extra_hour_rate: project.extra_hour_rate !== undefined ? Number(project.extra_hour_rate) : null,
+        employee_extra_hour_rate_pkr: project.employee_extra_hour_rate_pkr !== undefined ? Number(project.employee_extra_hour_rate_pkr) : null,
+        employee_monthly_base_payout_pkr: project.employee_monthly_base_payout_pkr !== undefined ? Number(project.employee_monthly_base_payout_pkr) : null,
+        subscription_start_date: project.subscription_start_date || null,
+        subscription_end_date: project.subscription_end_date || null,
         assigned: assignedValue,
         raw_source_link: project.raw_source_link || project.rawSourceLink || null,
         attachments: attachmentsValue,
@@ -181,9 +189,19 @@ export const dbProjects = {
       // retry without the notes field so project creation still works.
       if (error && (error.message?.includes('column') || error.message?.includes('does not exist') || error.code === '42703')) {
         console.warn('⚠️ Some project columns may not exist in schema, retrying insert without optional fields:', error.message);
-        // Remove notes and retry
-        // (other fields here have existed historically, so we keep them)
-        const { notes, ...retryData } = projectData;
+        // Remove optional fields and retry for backward-compatible schemas
+        const {
+          notes,
+          billing_model,
+          monthly_included_hours,
+          monthly_base_price,
+          extra_hour_rate,
+          employee_extra_hour_rate_pkr,
+          employee_monthly_base_payout_pkr,
+          subscription_start_date,
+          subscription_end_date,
+          ...retryData
+        } = projectData;
         const retryResult = await supabase
           .from(TABLES.projects)
           .insert(retryData)
@@ -257,6 +275,14 @@ export const dbProjects = {
       if (updates.start_date !== undefined) projectData.start_date = updates.start_date;
       if (updates.end_date !== undefined) projectData.end_date = updates.end_date;
       if (updates.deadline !== undefined) projectData.deadline = updates.deadline;
+      if (updates.billing_model !== undefined) projectData.billing_model = updates.billing_model || "project";
+      if (updates.monthly_included_hours !== undefined) projectData.monthly_included_hours = updates.monthly_included_hours === null ? null : Number(updates.monthly_included_hours);
+      if (updates.monthly_base_price !== undefined) projectData.monthly_base_price = updates.monthly_base_price === null ? null : Number(updates.monthly_base_price);
+      if (updates.extra_hour_rate !== undefined) projectData.extra_hour_rate = updates.extra_hour_rate === null ? null : Number(updates.extra_hour_rate);
+      if (updates.employee_extra_hour_rate_pkr !== undefined) projectData.employee_extra_hour_rate_pkr = updates.employee_extra_hour_rate_pkr === null ? null : Number(updates.employee_extra_hour_rate_pkr);
+      if (updates.employee_monthly_base_payout_pkr !== undefined) projectData.employee_monthly_base_payout_pkr = updates.employee_monthly_base_payout_pkr === null ? null : Number(updates.employee_monthly_base_payout_pkr);
+      if (updates.subscription_start_date !== undefined) projectData.subscription_start_date = updates.subscription_start_date || null;
+      if (updates.subscription_end_date !== undefined) projectData.subscription_end_date = updates.subscription_end_date || null;
       if (updates.notes !== undefined) projectData.notes = updates.notes || null;
       
       // Handle assigned field - it might be a string (from DB) or an array (from form)
@@ -642,6 +668,241 @@ export const dbEmployees = {
       console.error('Error in delete employee:', error);
       throw error;
     }
+  },
+};
+
+// Time Entries
+export const dbTimeEntries = {
+  getCached() {
+    return localStorageGet(TABLES.time_entries);
+  },
+
+  async getAll() {
+    if (!isSupabaseConfigured) return this.getCached();
+    await initializeSupabase();
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.time_entries)
+        .select('*')
+        .order('entry_date', { ascending: false });
+      if (error) throw error;
+      const rows = Array.isArray(data) ? data : [];
+      localStorageSet(TABLES.time_entries, rows);
+      return rows;
+    } catch (error) {
+      console.warn('Supabase get time entries failed, using localStorage:', error);
+      return this.getCached();
+    }
+  },
+
+  async create(entry) {
+    const payload = {
+      project_id: entry.project_id,
+      employee_id: entry.employee_id,
+      entry_date: entry.entry_date,
+      hours: Number(entry.hours) || 0,
+      is_overtime: Boolean(entry.is_overtime),
+      notes: entry.notes || null,
+    };
+    if (!isSupabaseConfigured) {
+      const all = this.getCached();
+      const created = { ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+      all.unshift(created);
+      localStorageSet(TABLES.time_entries, all);
+      return created;
+    }
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.time_entries)
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+      const all = this.getCached();
+      all.unshift(data);
+      localStorageSet(TABLES.time_entries, all);
+      return data;
+    } catch (error) {
+      console.warn('Supabase create time entry failed, using localStorage:', error);
+      const all = this.getCached();
+      const created = { ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+      all.unshift(created);
+      localStorageSet(TABLES.time_entries, all);
+      return created;
+    }
+  },
+
+  async update(id, updates) {
+    const entryId = String(id);
+    const payload = {
+      project_id: updates.project_id,
+      employee_id: updates.employee_id,
+      entry_date: updates.entry_date,
+      hours: Number(updates.hours) || 0,
+      is_overtime: Boolean(updates.is_overtime),
+      notes: updates.notes || null,
+    };
+    if (!isSupabaseConfigured) {
+      const all = this.getCached();
+      const index = all.findIndex((row) => String(row.id) === entryId);
+      if (index === -1) throw new Error("Time entry not found");
+      all[index] = { ...all[index], ...payload, updated_at: new Date().toISOString() };
+      localStorageSet(TABLES.time_entries, all);
+      return all[index];
+    }
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.time_entries)
+        .update(payload)
+        .eq("id", entryId)
+        .select()
+        .single();
+      if (error) throw error;
+      const all = this.getCached();
+      const index = all.findIndex((row) => String(row.id) === entryId);
+      if (index !== -1) all[index] = data;
+      else all.unshift(data);
+      localStorageSet(TABLES.time_entries, all);
+      return data;
+    } catch (error) {
+      console.warn("Supabase update time entry failed, using localStorage:", error);
+      const all = this.getCached();
+      const index = all.findIndex((row) => String(row.id) === entryId);
+      if (index === -1) throw new Error("Time entry not found");
+      all[index] = { ...all[index], ...payload, updated_at: new Date().toISOString() };
+      localStorageSet(TABLES.time_entries, all);
+      return all[index];
+    }
+  },
+
+  async delete(id) {
+    const entryId = String(id);
+    if (!isSupabaseConfigured) {
+      const all = this.getCached();
+      const filtered = all.filter((row) => String(row.id) !== entryId);
+      localStorageSet(TABLES.time_entries, filtered);
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from(TABLES.time_entries)
+        .delete()
+        .eq("id", entryId);
+      if (error) throw error;
+      const all = this.getCached();
+      const filtered = all.filter((row) => String(row.id) !== entryId);
+      localStorageSet(TABLES.time_entries, filtered);
+    } catch (error) {
+      console.warn("Supabase delete time entry failed, using localStorage:", error);
+      const all = this.getCached();
+      const filtered = all.filter((row) => String(row.id) !== entryId);
+      localStorageSet(TABLES.time_entries, filtered);
+    }
+  },
+};
+
+// Invoices
+export const dbInvoices = {
+  getCached() {
+    return localStorageGet(TABLES.invoices);
+  },
+
+  async getAll() {
+    if (!isSupabaseConfigured) return this.getCached();
+    await initializeSupabase();
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.invoices)
+        .select('*, invoice_items(*)')
+        .order('period_year', { ascending: false })
+        .order('period_month', { ascending: false });
+      if (error) throw error;
+      const rows = Array.isArray(data) ? data : [];
+      localStorageSet(TABLES.invoices, rows);
+      return rows;
+    } catch (error) {
+      console.warn('Supabase get invoices failed, using localStorage:', error);
+      return this.getCached();
+    }
+  },
+
+  async upsertMonthlyInvoice(invoice, items = []) {
+    const normalizedInvoice = {
+      customer_key: invoice.customer_key,
+      customer_name: invoice.customer_name,
+      period_year: Number(invoice.period_year),
+      period_month: Number(invoice.period_month),
+      status: invoice.status || 'draft',
+      subtotal: Number(invoice.subtotal) || 0,
+      total: Number(invoice.total) || 0,
+      currency: invoice.currency || 'USD',
+      metadata: invoice.metadata || {},
+    };
+
+    if (!isSupabaseConfigured) {
+      const all = this.getCached();
+      const invoiceId = crypto.randomUUID();
+      const created = {
+        id: invoiceId,
+        ...normalizedInvoice,
+        invoice_items: items.map((item) => ({ id: crypto.randomUUID(), invoice_id: invoiceId, ...item })),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      const filtered = all.filter((row) =>
+        !(String(row.customer_key) === String(created.customer_key) &&
+          Number(row.period_year) === Number(created.period_year) &&
+          Number(row.period_month) === Number(created.period_month))
+      );
+      localStorageSet(TABLES.invoices, [created, ...filtered]);
+      return created;
+    }
+
+    const { data: existing } = await supabase
+      .from(TABLES.invoices)
+      .select('id')
+      .eq('customer_key', normalizedInvoice.customer_key)
+      .eq('period_year', normalizedInvoice.period_year)
+      .eq('period_month', normalizedInvoice.period_month)
+      .maybeSingle();
+
+    let invoiceRow;
+    if (existing?.id) {
+      const { data, error } = await supabase
+        .from(TABLES.invoices)
+        .update(normalizedInvoice)
+        .eq('id', existing.id)
+        .select()
+        .single();
+      if (error) throw error;
+      invoiceRow = data;
+      await supabase.from(TABLES.invoice_items).delete().eq('invoice_id', existing.id);
+    } else {
+      const { data, error } = await supabase
+        .from(TABLES.invoices)
+        .insert(normalizedInvoice)
+        .select()
+        .single();
+      if (error) throw error;
+      invoiceRow = data;
+    }
+
+    if (Array.isArray(items) && items.length > 0) {
+      const mappedItems = items.map((item) => ({
+        invoice_id: invoiceRow.id,
+        item_type: item.item_type,
+        project_id: item.project_id || null,
+        description: item.description || '',
+        quantity: Number(item.quantity) || 0,
+        unit_price: Number(item.unit_price) || 0,
+        line_total: Number(item.line_total) || 0,
+        metadata: item.metadata || {},
+      }));
+      const { error: itemError } = await supabase.from(TABLES.invoice_items).insert(mappedItems);
+      if (itemError) throw itemError;
+    }
+
+    return invoiceRow;
   },
 };
 

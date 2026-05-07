@@ -67,6 +67,8 @@ export const useAppStore = create((set, get) => ({
   activeMonth: getDefaultActiveMonth(),
   projects: [],
   employees: [],
+  timeEntries: [],
+  invoices: [],
   profiles: [],
   agencies: [],
   brands: [],
@@ -89,6 +91,8 @@ export const useAppStore = create((set, get) => ({
     try {
       const cachedProjects = db.dbProjects.getCached ? db.dbProjects.getCached() : [];
       const cachedEmployees = db.dbEmployees.getCached ? db.dbEmployees.getCached() : [];
+      const cachedTimeEntries = db.dbTimeEntries.getCached ? db.dbTimeEntries.getCached() : [];
+      const cachedInvoices = db.dbInvoices.getCached ? db.dbInvoices.getCached() : [];
       const cachedProfiles = db.dbProfiles.getCached ? db.dbProfiles.getCached() : [];
       const cachedAgencies = db.dbAgencies.getCached ? db.dbAgencies.getCached() : [];
       const cachedBrands = db.dbBrands.getCached ? db.dbBrands.getCached() : [];
@@ -97,6 +101,8 @@ export const useAppStore = create((set, get) => ({
       set({
         projects: toCamel(Array.isArray(cachedProjects) ? cachedProjects : []),
         employees: toCamel(Array.isArray(cachedEmployees) ? cachedEmployees : []),
+        timeEntries: toCamel(Array.isArray(cachedTimeEntries) ? cachedTimeEntries : []),
+        invoices: toCamel(Array.isArray(cachedInvoices) ? cachedInvoices : []),
         profiles: toCamel(Array.isArray(cachedProfiles) ? cachedProfiles : []),
         agencies: toCamel(Array.isArray(cachedAgencies) ? cachedAgencies : []),
         brands: toCamel(Array.isArray(cachedBrands) ? cachedBrands : []),
@@ -118,6 +124,19 @@ export const useAppStore = create((set, get) => ({
     
     if (!hasAnyCache) set({ loading: true });
 
+    const syncActiveMonthToLocalSettings = (value) => {
+      try {
+        const v = String(value || "").trim();
+        if (!v) return;
+        const raw = localStorage.getItem("nexvoide_settings");
+        const parsed = raw ? JSON.parse(raw) : {};
+        parsed.active_month = v;
+        localStorage.setItem("nexvoide_settings", JSON.stringify(parsed));
+      } catch (_) {
+        // ignore
+      }
+    };
+
     // Load everything in parallel - no blocking
     Promise.allSettled([
       // Settings (non-blocking)
@@ -127,11 +146,13 @@ export const useAppStore = create((set, get) => ({
         db.dbSettings.get('active_month').then(async (activeMonth) => {
           if (activeMonth) {
             set({ activeMonth: String(activeMonth) });
+            syncActiveMonthToLocalSettings(String(activeMonth));
             return;
           }
           // Initialize once for existing installations.
           const fallback = getDefaultActiveMonth();
           set({ activeMonth: fallback });
+          syncActiveMonthToLocalSettings(fallback);
           try {
             await db.dbSettings.set('active_month', fallback);
           } catch (_) {}
@@ -147,6 +168,16 @@ export const useAppStore = create((set, get) => ({
       db.dbEmployees.getAll().then(data => {
         const camel = Array.isArray(data) ? toCamel(data) : [];
         set({ employees: camel });
+      }).catch(() => {}),
+
+      db.dbTimeEntries.getAll().then(data => {
+        const camel = Array.isArray(data) ? toCamel(data) : [];
+        set({ timeEntries: camel });
+      }).catch(() => {}),
+
+      db.dbInvoices.getAll().then(data => {
+        const camel = Array.isArray(data) ? toCamel(data) : [];
+        set({ invoices: camel });
       }).catch(() => {}),
       
       db.dbProfiles.getAll().then(data => {
@@ -206,6 +237,17 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
+  async refreshTimeEntries() {
+    try {
+      const data = await db.dbTimeEntries.getAll();
+      const camel = Array.isArray(data) ? toCamel(data) : [];
+      set({ timeEntries: camel });
+      return camel;
+    } catch {
+      return get().timeEntries || [];
+    }
+  },
+
   async setCurrency(c) {
     set({ currency: c });
     await db.dbSettings.set('currency', c);
@@ -233,6 +275,16 @@ export const useAppStore = create((set, get) => ({
     if (!value) return;
     set({ activeMonth: value });
     await db.dbSettings.set('active_month', value);
+
+    // Keep invoice PDF generator month logic in sync.
+    try {
+      const raw = localStorage.getItem("nexvoide_settings");
+      const parsed = raw ? JSON.parse(raw) : {};
+      parsed.active_month = value;
+      localStorage.setItem("nexvoide_settings", JSON.stringify(parsed));
+    } catch (_) {
+      // ignore
+    }
   },
 
   async addProject(p) {
@@ -419,6 +471,46 @@ export const useAppStore = create((set, get) => ({
       // Re-throw with a user-friendly message
       const message = error.message || 'Failed to delete employee. Please try again.';
       throw new Error(message);
+    }
+  },
+
+  async addTimeEntry(entry) {
+    try {
+      const created = await db.dbTimeEntries.create(toSnake(entry));
+      const camel = toCamel(created);
+      set({ timeEntries: [camel, ...(get().timeEntries || [])] });
+      return camel;
+    } catch (error) {
+      console.error('Failed to add time entry:', error);
+      throw error;
+    }
+  },
+
+  async updateTimeEntry(id, updates) {
+    try {
+      const updated = await db.dbTimeEntries.update(String(id), toSnake(updates));
+      const camel = toCamel(updated);
+      set({
+        timeEntries: (get().timeEntries || []).map((row) =>
+          String(row.id) === String(id) ? camel : row
+        ),
+      });
+      return camel;
+    } catch (error) {
+      console.error('Failed to update time entry:', error);
+      throw error;
+    }
+  },
+
+  async deleteTimeEntry(id) {
+    try {
+      await db.dbTimeEntries.delete(String(id));
+      set({
+        timeEntries: (get().timeEntries || []).filter((row) => String(row.id) !== String(id)),
+      });
+    } catch (error) {
+      console.error('Failed to delete time entry:', error);
+      throw error;
     }
   },
 

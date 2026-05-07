@@ -4,8 +4,9 @@
  */
 
 import { supabase, isSupabaseConfigured } from '../lib/supabase.js';
-import { dbProjects } from '../lib/db.js';
+import { dbProjects, dbTimeEntries, dbInvoices } from '../lib/db.js';
 import { convert } from "../stores/appStore.js";
+import { calculateMonthEndInvoiceDraft } from './subscriptionBilling.js';
 
 /**
  * Get current month and year
@@ -84,7 +85,25 @@ export function isProjectIncomplete(project) {
 /**
  * Calculate project financials
  */
-export function calculateProjectFinancials(project, currency = 'USD', rate = 280) {
+function getMonthBounds(year, month) {
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 0, 23, 59, 59, 999);
+  return { start, end };
+}
+
+function getProjectEntriesForMonth(timeEntries, projectId, year, month) {
+  if (!year || !month) return [];
+  const { start, end } = getMonthBounds(year, month);
+  return (Array.isArray(timeEntries) ? timeEntries : []).filter((entry) => {
+    const pid = String(entry.project_id || entry.projectId || '');
+    if (pid !== String(projectId)) return false;
+    const d = new Date(entry.entry_date || entry.entryDate || '');
+    if (Number.isNaN(d.getTime())) return false;
+    return d >= start && d <= end;
+  });
+}
+
+export function calculateProjectFinancials(project, currency = 'USD', rate = 280, context = {}) {
   const ensureAssigned = (assigned) => {
     if (Array.isArray(assigned)) return assigned;
     if (typeof assigned === 'string') {
@@ -97,6 +116,45 @@ export function calculateProjectFinancials(project, currency = 'USD', rate = 280
     }
     return [];
   };
+
+  const billingModel = String(project?.billingModel || project?.billing_model || 'project').toLowerCase();
+  const monthlyBaseRaw = Number(project?.monthlyBasePrice || project?.monthly_base_price || 0);
+  const includedRaw = Number(project?.monthlyIncludedHours || project?.monthly_included_hours || 0);
+  const customerExtraRateRaw = Number(project?.extraHourRate || project?.extra_hour_rate || 0);
+  const isSubscriptionLike =
+    billingModel === 'subscription' ||
+    monthlyBaseRaw > 0 ||
+    includedRaw > 0 ||
+    customerExtraRateRaw > 0 ||
+    Number(project?.subscriptionStartDate || project?.subscription_start_date ? 1 : 0) > 0;
+
+  const ctxYear = Number(context?.year || 0);
+  const ctxMonth = Number(context?.month || 0);
+  const ctxEntries = Array.isArray(context?.timeEntries) ? context.timeEntries : [];
+
+  if (isSubscriptionLike && ctxYear && ctxMonth) {
+    const monthlyBase = Number(project.monthly_base_price || project.monthlyBasePrice || project.amount || 0);
+    const customerExtraRate = Number(project.extra_hour_rate || project.extraHourRate || 0);
+    const employeeBasePayoutPkr = Number(project.employee_monthly_base_payout_pkr || project.employeeMonthlyBasePayoutPkr || 0);
+    const employeeExtraRatePkr = Number(project.employee_extra_hour_rate_pkr || project.employeeExtraHourRatePkr || 0);
+    const entries = getProjectEntriesForMonth(ctxEntries, project.id, ctxYear, ctxMonth);
+    const usedHours = entries.reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0);
+
+    // Match invoice/finance behavior: charge extra based on total used hours in the month.
+    const revenueRaw = monthlyBase + (usedHours * customerExtraRate);
+    const revenue = convert(revenueRaw, project.currency || 'USD', currency, rate);
+
+    const teamCostRawPkr = employeeBasePayoutPkr + (usedHours * employeeExtraRatePkr);
+    const teamCost = convert(teamCostRawPkr, 'PKR', currency, rate);
+    const profit = revenue - teamCost;
+
+    return {
+      revenue,
+      teamCost,
+      profit,
+      currency,
+    };
+  }
 
   const order = convert(project.amount || 0, project.currency || 'USD', currency, rate);
   const assignedArray = ensureAssigned(project.assigned);
@@ -224,8 +282,11 @@ function wasProjectActiveInMonth(project, startDate, endDate) {
 /**
  * Calculate monthly statistics
  */
-export async function calculateMonthlyStats(year, month, currency = 'USD', rate = 280, includeArchived = true) {
+export async function calculateMonthlyStats(year, month, currency = 'USD', rate = 280, includeArchived = true, timeEntriesOverride = null) {
   const projects = await getProjectsForMonth(year, month, includeArchived);
+  const allTimeEntries = Array.isArray(timeEntriesOverride)
+    ? timeEntriesOverride
+    : await dbTimeEntries.getAll();
   
   let totalRevenue = 0;
   let totalExpenses = 0;
@@ -250,7 +311,7 @@ export async function calculateMonthlyStats(year, month, currency = 'USD', rate 
   const employeeCosts = {};
   
   for (const project of projects) {
-    const financials = calculateProjectFinancials(project, currency, rate);
+    const financials = calculateProjectFinancials(project, currency, rate, { year, month, timeEntries: allTimeEntries });
     totalRevenue += financials.revenue;
     totalExpenses += financials.teamCost;
     totalTeamCost += financials.teamCost;
@@ -308,7 +369,28 @@ export async function calculateMonthlyStats(year, month, currency = 'USD', rate 
       }
     }
   }
-  
+
+  // For subscription billing, invoices are generated from month time entries.
+  // Use invoice draft total as the source of truth for gross revenue, to match invoices.
+  try {
+    const invoiceDrafts = calculateMonthEndInvoiceDraft({
+      projects,
+      timeEntries: allTimeEntries,
+      year,
+      month,
+    });
+    const draftTotal = (Array.isArray(invoiceDrafts) ? invoiceDrafts : []).reduce((sum, draft) => {
+      const subtotal = Number(draft?.subtotal || 0);
+      return sum + convert(subtotal, 'USD', currency, rate);
+    }, 0);
+    if (draftTotal > 0) {
+      totalRevenue = draftTotal;
+      completedRevenue = Math.max(completedRevenue, draftTotal);
+    }
+  } catch (e) {
+    console.warn('Draft invoice total failed in monthly stats:', e);
+  }
+
   const netProfit = totalRevenue - totalExpenses;
   
   return {
@@ -337,13 +419,13 @@ export async function calculateMonthlyStats(year, month, currency = 'USD', rate 
 /**
  * Archive a project
  */
-export async function archiveProject(project, archivedMonthId, currency = 'USD', rate = 280) {
+export async function archiveProject(project, archivedMonthId, currency = 'USD', rate = 280, context = {}) {
   if (!isSupabaseConfigured || !supabase) {
     console.warn('Supabase not configured, cannot archive project');
     return null;
   }
   
-  const financials = calculateProjectFinancials(project, currency, rate);
+  const financials = calculateProjectFinancials(project, currency, rate, context);
   
   const archivedProject = {
     archived_month_id: archivedMonthId,
@@ -357,8 +439,9 @@ export async function archiveProject(project, archivedMonthId, currency = 'USD',
     service: project.service,
     quantity: project.quantity,
     revision_quantity: project.revision_quantity,
-    amount: project.amount || 0,
-    currency: project.currency || 'USD',
+    // Store the computed monthly revenue so archive views match invoices/finance.
+    amount: financials.revenue || 0,
+    currency,
     status: 'Completed', // Archived projects are always marked as completed
     is_revision: project.is_revision || false,
     start_date: project.start_date || project.startDate,
@@ -448,9 +531,12 @@ export async function closeMonth(year, month, userId, options = {}) {
   let archivedMonthId;
   let isUpdate = false;
   
+  // Load time entries once for consistent calculations (stats + invoices + archiving).
+  const allTimeEntries = await dbTimeEntries.getAll();
+
   // Calculate statistics first (before modifying projects)
   // During month closing, compute stats from active rows only (not archived snapshots).
-  const stats = await calculateMonthlyStats(year, month, currency, rate, false);
+  const stats = await calculateMonthlyStats(year, month, currency, rate, false, allTimeEntries);
   
   // Get all projects for the month
   // During month closing, act only on active rows.
@@ -644,7 +730,7 @@ export async function closeMonth(year, month, userId, options = {}) {
   for (const project of completedProjects) {
     try {
       // Create archive record
-      const archived = await archiveProject(project, archivedMonth.id, currency, rate);
+      const archived = await archiveProject(project, archivedMonth.id, currency, rate, { year, month, timeEntries: allTimeEntries });
       if (archived) archivedProjects.push(archived);
       
       // Mark project as archived in main projects table
@@ -728,7 +814,7 @@ export async function closeMonth(year, month, userId, options = {}) {
       console.warn(`🛠️ Repair archive: archiving missed completed project ${projectId}`);
 
       try {
-        await archiveProject(project, archivedMonth.id, currency, rate);
+        await archiveProject(project, archivedMonth.id, currency, rate, { year, month, timeEntries: allTimeEntries });
       } catch (e) {
         console.error(`🛠️ Repair archive failed to insert archived_projects for ${projectId}:`, e);
       }
@@ -888,6 +974,49 @@ export async function closeMonth(year, month, userId, options = {}) {
   
   console.log(`✅ Successfully pulled forward ${pulledProjects.length} projects`);
   
+  // Build consolidated invoices (subscription + regular projects) for this month.
+  let invoiceDetails = [];
+  let invoiceCount = 0;
+  let paidInvoices = 0;
+  let unpaidInvoices = 0;
+  try {
+    const invoiceDrafts = calculateMonthEndInvoiceDraft({
+      projects: allProjects,
+      timeEntries: allTimeEntries,
+      year,
+      month,
+    });
+
+    for (const draft of invoiceDrafts) {
+      await dbInvoices.upsertMonthlyInvoice(
+        {
+          customer_key: draft.customerKey,
+          customer_name: draft.customerName,
+          period_year: year,
+          period_month: month,
+          status: 'draft',
+          subtotal: draft.subtotal,
+          total: draft.subtotal,
+          currency,
+          metadata: { generatedBy: 'monthly_close', generatedAt: new Date().toISOString() },
+        },
+        draft.items
+      );
+    }
+
+    invoiceCount = invoiceDrafts.length;
+    paidInvoices = 0;
+    unpaidInvoices = invoiceDrafts.length;
+    invoiceDetails = invoiceDrafts.map((draft) => ({
+      customer_key: draft.customerKey,
+      customer_name: draft.customerName,
+      total: draft.subtotal,
+      items: draft.items.length,
+    }));
+  } catch (invoiceError) {
+    console.error('Invoice generation failed during month close:', invoiceError);
+  }
+
   // Create or update finance snapshot
   const financeData = {
     archived_month_id: archivedMonth.id,
@@ -898,10 +1027,10 @@ export async function closeMonth(year, month, userId, options = {}) {
     service_revenue: stats.serviceRevenue,
     employee_costs: stats.employeeCosts,
     expenses: {},
-    total_invoices: 0,
-    paid_invoices: 0,
-    unpaid_invoices: 0,
-    invoice_details: []
+    total_invoices: invoiceCount,
+    paid_invoices: paidInvoices,
+    unpaid_invoices: unpaidInvoices,
+    invoice_details: invoiceDetails
   };
   
   let financeSnapshot;
