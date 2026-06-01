@@ -11,7 +11,6 @@ import {
   Mail,
   Phone,
   Building2,
-  Calendar,
   CreditCard,
   Briefcase,
   TrendingUp,
@@ -36,6 +35,7 @@ export default function HR() {
     rate,
     loading,
     userRole,
+    activeMonth,
     refreshEmployees,
     employees: allEmployees,
     user,
@@ -61,10 +61,6 @@ export default function HR() {
   const [editing, setEditing] = useState(null);
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState("payout");
-  const [month, setMonth] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  });
 
   // Don't refresh on mount - data already loaded in initialize()
   // Only refresh if explicitly needed (e.g., after create/update)
@@ -87,8 +83,16 @@ export default function HR() {
     return [];
   };
 
+  const normalizeStatus = (status) => {
+    const raw = String(status || "").trim().toLowerCase();
+    if (!raw) return "";
+    if (raw === "complete" || raw === "completed" || raw === "done") return "completed";
+    if (raw === "revision" || raw === "revising") return "revision";
+    return raw;
+  };
+
   const stats = useMemo(() => {
-    const completedStatuses = new Set(["Completed", "completed", "Done", "done"]);
+    const selectedMonth = activeMonth || toYearMonth(new Date().toISOString());
     const map = new Map();
     // Initialize map with all employees - handle both camelCase and snake_case
     for (const emp of safeEmployees) {
@@ -107,15 +111,15 @@ export default function HR() {
       // Skip archived projects (they're in archived_projects table, not active projects)
       if (p.archived === true) continue;
       
-      const currentMonth = toYearMonth(new Date().toISOString());
-      const belongsToMonth = belongsToBalanceMonth(p, month, currentMonth);
+      const currentMonth = activeMonth || toYearMonth(new Date().toISOString());
+      const belongsToMonth = belongsToBalanceMonth(p, selectedMonth, currentMonth);
 
       if (!belongsToMonth) continue;
-      if (!completedStatuses.has(p.status)) continue;
+      if (normalizeStatus(p.status) !== "completed") continue;
       const assignedArray = ensureAssigned(p.assigned);
       const projectQuantity = Number(p.quantity) || 0;
       const revisionQty = Number(p.revisionQuantity) || 0;
-      const isRevision = p.isRevision || p.status === "Revision";
+      const isRevision = p.isRevision || normalizeStatus(p.status) === "revision";
       // For revisions, use revisionQuantity if available, otherwise use quantity
       const quantityToUse =
         isRevision && revisionQty > 0 ? revisionQty : projectQuantity;
@@ -194,7 +198,7 @@ export default function HR() {
       rows.sort((a, b) => b.projects - a.projects);
     else rows.sort((a, b) => b.payout - a.payout);
     return rows;
-  }, [safeEmployees, safeProjects, month, currency, rate, sortKey]);
+  }, [safeEmployees, safeProjects, currency, rate, sortKey, activeMonth]);
 
   const displayed = useMemo(() => {
     const q = query.toLowerCase();
@@ -249,16 +253,6 @@ export default function HR() {
         />
         <div className='flex-1 hidden md:block' />
         <div className="flex items-center gap-2 flex-shrink-0">
-          <div className='inline-flex items-center gap-2 px-2 h-10 rounded-xl bg-slate-800/50 border border-slate-700'>
-            <Calendar size={14} className='text-slate-400' />
-            <input
-              type='month'
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className='bg-transparent text-white text-sm outline-none border-none'
-              title='Salary month filter'
-            />
-          </div>
           <button
             className='btn btn-secondary inline-flex items-center gap-2 text-sm'
             onClick={async () => {

@@ -3,6 +3,12 @@ import * as db from "../lib/db.js";
 import { logActivity, createProjectDescription, createEmployeeDescription, createEntityDescription, createSettingDescription } from "../utils/activityLogger.js";
 import { normalizeRoles, getPrimaryRole } from "../utils/permissions.js";
 
+const getDefaultActiveMonth = () => {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
 // Helper to convert snake_case to camelCase
 const toCamel = (obj) => {
   if (obj === null || obj === undefined) return obj;
@@ -58,6 +64,7 @@ const toSnake = (obj) => {
 export const useAppStore = create((set, get) => ({
   currency: "USD",
   rate: 280,
+  activeMonth: getDefaultActiveMonth(),
   projects: [],
   employees: [],
   profiles: [],
@@ -117,6 +124,18 @@ export const useAppStore = create((set, get) => ({
       Promise.all([
         db.dbSettings.get('currency').then(currency => currency && set({ currency })),
         db.dbSettings.get('rate').then(rate => rate && set({ rate: Number(rate) || 280 })),
+        db.dbSettings.get('active_month').then(async (activeMonth) => {
+          if (activeMonth) {
+            set({ activeMonth: String(activeMonth) });
+            return;
+          }
+          // Initialize once for existing installations.
+          const fallback = getDefaultActiveMonth();
+          set({ activeMonth: fallback });
+          try {
+            await db.dbSettings.set('active_month', fallback);
+          } catch (_) {}
+        }),
       ]),
       
       // Data (updates state immediately as each completes)
@@ -207,6 +226,13 @@ export const useAppStore = create((set, get) => ({
       oldValue: { rate: oldRate },
       newValue: { rate }
     });
+  },
+
+  async setActiveMonth(activeMonth) {
+    const value = String(activeMonth || '').trim();
+    if (!value) return;
+    set({ activeMonth: value });
+    await db.dbSettings.set('active_month', value);
   },
 
   async addProject(p) {

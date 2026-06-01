@@ -57,12 +57,24 @@ export default function Projects() {
     return due.getTime() - now;
   };
 
+  // Archived projects should not appear in active project lists/tabs.
+  const isArchivedProject = (project) => {
+    if (!project) return false;
+    if (project.archived === true || project.archived === 1) return true;
+    if (String(project.archived).toLowerCase() === "true") return true;
+
+    const archivedMonthId = project.archived_month_id ?? project.archivedMonthId;
+    return archivedMonthId !== null && archivedMonthId !== undefined && String(archivedMonthId).trim() !== "";
+  };
+
   const filtered = useMemo(() => {
     if (!safeProjects || !Array.isArray(safeProjects)) return [];
     const list = safeProjects.map(p => ({
       ...p,
       assigned: ensureAssigned(p.assigned)
     })).filter((p) => {
+      // Do not show month-closed (archived) projects in Projects page.
+      if (isArchivedProject(p)) return false;
       const matchesQ = [p.projectName, p.clientName, p.platform].some((x) =>
         String(x || "").toLowerCase().includes(query.toLowerCase())
       );

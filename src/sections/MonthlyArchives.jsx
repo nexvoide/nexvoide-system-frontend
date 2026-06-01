@@ -2,15 +2,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Calendar, Download, Filter, Search, TrendingUp, TrendingDown, 
-  DollarSign, FileText, BarChart3, Eye, ChevronDown, ChevronUp, X, RotateCcw, Trash2
+  DollarSign, FileText, BarChart3, Eye, ChevronDown, ChevronUp, X, Trash2
 } from 'lucide-react';
-import { getArchivedMonths, getArchivedProjects, getFinanceSnapshot, restoreArchivedMonth, deleteArchivedMonth } from '../utils/monthlyClosing.js';
+import { getArchivedMonths, getArchivedProjects, getFinanceSnapshot, deleteArchivedMonth } from '../utils/monthlyClosing.js';
   import { useAppStore, convert } from "../stores/appStore.js";
 import { hasRole } from '../utils/permissions.js';
 import { ROLES } from '../utils/permissions.js';
 
 export default function MonthlyArchives() {
-  const { user, currency, rate, profiles, agencies, brands, refreshProjects } = useAppStore();
+  const { user, currency, rate, profiles, agencies, brands } = useAppStore();
   const [archivedMonths, setArchivedMonths] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(null);
@@ -126,43 +126,6 @@ export default function MonthlyArchives() {
     currency: currency, 
     maximumFractionDigits: 2 
   }).format(n);
-
-  const handleRestoreMonth = async (month) => {
-    const ok = window.confirm(
-      `Restore ${month.month_label}?\n\nThis will move archived projects back to active projects and remove this archive month.`
-    );
-    if (!ok) return;
-
-    setActionLoadingId(month.id);
-    try {
-      const result = await restoreArchivedMonth(month.id);
-
-      // Keep dashboard/HR salary cards in sync immediately after restore.
-      try {
-        await refreshProjects?.();
-      } catch (refreshError) {
-        console.warn('Failed to refresh active projects after restore:', refreshError);
-      }
-
-      alert(`Restored ${result.restoredCount} projects from ${month.month_label}.`);
-
-      if (selectedMonth?.id === month.id) {
-        setSelectedMonth(null);
-        setMonthProjects([]);
-        setFinanceSnapshot(null);
-      }
-      if (expandedMonth === month.id) {
-        setExpandedMonth(null);
-      }
-
-      await loadArchivedMonths();
-    } catch (error) {
-      console.error('Restore archived month failed:', error);
-      alert(`Failed to restore month: ${error.message || 'Please try again.'}`);
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
 
   const handleDeleteMonth = async (month) => {
     const ok = window.confirm(
@@ -407,17 +370,9 @@ export default function MonthlyArchives() {
                           View Details
                         </button>
                         <button
-                          onClick={() => handleRestoreMonth(month)}
-                          disabled={actionLoadingId === month.id}
-                          className="px-4 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
-                        >
-                          <RotateCcw size={16} />
-                          Restore
-                        </button>
-                        <button
                           onClick={() => handleDeleteMonth(month)}
                           disabled={actionLoadingId === month.id}
-                          className="px-4 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                          className="px-4 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60 sm:col-span-2"
                         >
                           <Trash2 size={16} />
                           Delete

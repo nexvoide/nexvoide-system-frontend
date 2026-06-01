@@ -23,7 +23,18 @@ export function getCurrentMonthYear() {
  * Get the month that should normally be closed.
  * Example: on May 1, you usually close April.
  */
-export function getClosableMonthYear() {
+export function getClosableMonthYear(activeMonth = '') {
+  if (activeMonth && /^\d{4}-\d{2}$/.test(String(activeMonth))) {
+    const [yearStr, monthStr] = String(activeMonth).split('-');
+    const year = Number(yearStr);
+    const month = Number(monthStr);
+    return {
+      year,
+      month,
+      monthLabel: getMonthLabel(year, month),
+    };
+  }
+
   const now = new Date();
   const closable = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   return {
@@ -44,17 +55,30 @@ export function getMonthLabel(year, month) {
 /**
  * Check if a project is completed
  */
+function normalizeProjectStatus(status) {
+  const raw = String(status || '').trim().toLowerCase();
+  if (!raw) return '';
+
+  // Normalize common aliases and wording differences.
+  if (raw === 'complete' || raw === 'completed' || raw === 'done') return 'completed';
+  if (raw === 'in progress' || raw === 'in-progress' || raw === 'progress') return 'in_progress';
+  if (raw === 'pending') return 'pending';
+  if (raw === 'revision' || raw === 'revising') return 'revision';
+  if (raw === 'cancel' || raw === 'cancelled' || raw === 'canceled') return 'cancelled';
+
+  return raw;
+}
+
 export function isProjectCompleted(project) {
-  const completedStatuses = ['Completed', 'completed', 'Done', 'done'];
-  return completedStatuses.includes(project.status);
+  return normalizeProjectStatus(project?.status) === 'completed';
 }
 
 /**
  * Check if a project is incomplete
  */
 export function isProjectIncomplete(project) {
-  const incompleteStatuses = ['In Progress', 'in progress', 'Pending', 'pending', 'Revision', 'revision', 'Revising'];
-  return incompleteStatuses.includes(project.status);
+  const normalized = normalizeProjectStatus(project?.status);
+  return normalized === 'in_progress' || normalized === 'pending' || normalized === 'revision';
 }
 
 /**
@@ -200,8 +224,8 @@ function wasProjectActiveInMonth(project, startDate, endDate) {
 /**
  * Calculate monthly statistics
  */
-export async function calculateMonthlyStats(year, month, currency = 'USD', rate = 280) {
-  const projects = await getProjectsForMonth(year, month);
+export async function calculateMonthlyStats(year, month, currency = 'USD', rate = 280, includeArchived = true) {
+  const projects = await getProjectsForMonth(year, month, includeArchived);
   
   let totalRevenue = 0;
   let totalExpenses = 0;
@@ -232,20 +256,20 @@ export async function calculateMonthlyStats(year, month, currency = 'USD', rate 
     totalTeamCost += financials.teamCost;
     
     // Count by status
-    const status = project.status || 'In Progress';
-    if (status === 'Completed' || status === 'completed') {
+    const status = normalizeProjectStatus(project.status || 'In Progress');
+    if (status === 'completed') {
       completedProjects++;
       completedRevenue += financials.revenue;
-    } else if (status === 'Pending' || status === 'pending') {
+    } else if (status === 'pending') {
       pendingProjects++;
       pendingRevenue += financials.revenue;
-    } else if (status === 'In Progress' || status === 'in progress') {
+    } else if (status === 'in_progress') {
       inProgressProjects++;
       inProgressRevenue += financials.revenue - financials.teamCost; // Net value
-    } else if (status === 'Cancelled' || status === 'cancelled' || status === 'Cancel') {
+    } else if (status === 'cancelled') {
       cancelledProjects++;
       cancelledRevenue += financials.revenue;
-    } else if (status === 'Revision' || status === 'revision' || status === 'Revising') {
+    } else if (status === 'revision') {
       revisionProjects++;
       revisionRevenue += financials.revenue - financials.teamCost; // Net value
     }
@@ -425,10 +449,12 @@ export async function closeMonth(year, month, userId, options = {}) {
   let isUpdate = false;
   
   // Calculate statistics first (before modifying projects)
-  const stats = await calculateMonthlyStats(year, month, currency, rate);
+  // During month closing, compute stats from active rows only (not archived snapshots).
+  const stats = await calculateMonthlyStats(year, month, currency, rate, false);
   
   // Get all projects for the month
-  const allProjects = await getProjectsForMonth(year, month);
+  // During month closing, act only on active rows.
+  const allProjects = await getProjectsForMonth(year, month, false);
   
   // Separate projects based on user's explicit selections
   // Only archive/pull forward projects that user explicitly selected
@@ -661,11 +687,29 @@ export async function closeMonth(year, month, userId, options = {}) {
   try {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
+    const globalActiveProjects = await dbProjects.getAll();
 
     const monthCompleted = allProjects.filter(p => isProjectCompleted(p) && wasProjectActiveInMonth(p, startDate, endDate));
+    // Also include old completed carryovers (for example restored old months) so they
+    // don't stay visible in active "Completed" lists after closing a month.
+    const carryoverCompleted = (Array.isArray(globalActiveProjects) ? globalActiveProjects : []).filter(p => {
+      const normalizedStatus = normalizeProjectStatus(p?.status);
+      const isCompleted = normalizedStatus === 'completed';
+      const isArchived = p?.archived === true;
+      const isPulledForward = p?.pulled_forward === true || p?.pulledForward === true;
+      return isCompleted && !isArchived && !isPulledForward;
+    });
+
+    const repairCandidatesById = new Map();
+    for (const project of [...monthCompleted, ...carryoverCompleted]) {
+      const projectId = String(project?.id || '').trim();
+      if (!projectId) continue;
+      repairCandidatesById.set(projectId, project);
+    }
+
     const alreadyArchivedIds = new Set(archivedProjects.map(p => String(p.original_project_id || '').trim()).filter(Boolean));
 
-    for (const project of monthCompleted) {
+    for (const project of repairCandidatesById.values()) {
       const projectId = String(project.id || '').trim();
       if (!projectId) continue;
       if (alreadyArchivedIds.has(projectId)) continue;

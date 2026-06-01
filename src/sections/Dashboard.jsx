@@ -31,6 +31,7 @@ import Avatar from "../components/Avatar.jsx";
 export default function Dashboard() {
   const { currency, rate, loading, activityLogs, loadActivityLogs, user, projects: allProjects, agencies: allAgencies, brands: allBrands, profiles: allProfiles, allUsers } =
     useAppStore();
+  const activeMonth = useAppStore((s) => s.activeMonth);
   const projects = useFilteredProjects(); // Use filtered projects based on role
   const employees = useFilteredEmployees(); // Use filtered employees based on role
   const { profiles, agencies, brands } = useFilteredClients(); // Use filtered clients based on role
@@ -772,7 +773,7 @@ export default function Dashboard() {
     if (!userId) return 0;
     
     let totalEarnings = 0;
-    const currentMonth = toYearMonth(new Date().toISOString());
+    const currentMonth = activeMonth || toYearMonth(new Date().toISOString());
     const completedStatuses = new Set(["Completed", "completed", "Done", "done"]);
     
     for (const p of projects) {
@@ -807,7 +808,7 @@ export default function Dashboard() {
     }
     
     return totalEarnings;
-  }, [projects, user, currency, rate]);
+  }, [projects, user, currency, rate, activeMonth]);
 
   // Only keep Net Profit KPI (if user has permission to view finance details)
   const kpis = canViewFinanceDetails
