@@ -1,27 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Hash, Plus, Settings, Users, MessageSquare, 
-  Send, Smile, X, Edit2, Trash2, UserPlus, Menu
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { AnimatePresence } from 'framer-motion';
+import { Hash, MessageSquare, X, Menu } from 'lucide-react';
 import { useChatStore } from '../stores/chatStore.js';
 import { useAppStore } from '../stores/appStore.js';
 import { ROLES } from '../utils/permissions.js';
 import ChatSidebar from '../components/chat/ChatSidebar.jsx';
 import ChatWindow from '../components/chat/ChatWindow.jsx';
-import VoiceRoom from '../components/chat/VoiceRoom.jsx';
 import ChannelDialog from '../components/chat/ChannelDialog.jsx';
 import UserManagementDialog from '../components/chat/UserManagementDialog.jsx';
 import SectionDialog from '../components/chat/SectionDialog.jsx';
-import { useVoiceRoomParticipants } from '../hooks/useVoiceRoomParticipants.js';
 
 export default function Chat() {
-  const { user, userRole, allUsers = [], employees = [] } = useAppStore();
+  const { user, userRole, allUsers = [] } = useAppStore();
   const {
     channels,
     selectedChannel,
     selectChannel,
-    getUserChannels,
     sections,
     getSortedSections,
     reorderSections,
@@ -38,46 +32,41 @@ export default function Chat() {
   const [showSectionDialog, setShowSectionDialog] = useState(false);
   const [editingChannel, setEditingChannel] = useState(null);
 
-  const isAdmin = userRole === ROLES.ADMIN;
-  // Use user.id as primary, fallback to username, then userId
-  // This MUST match the format used when saving users in UserManagementDialog
-  // Note: user object has userId (not user_id) based on zustand.js login function
-  const userIdForChannels = user?.id || user?.username || user?.userId;
-  
-  console.log('Chat - Determining user ID for channel access:', {
-    userId: user?.id,
-    username: user?.username,
-    userId_field: user?.userId,
-    userIdForChannels,
-    userObject: user,
-    allUserFields: Object.keys(user || {})
+  const normalizedRole = String(userRole || '').trim().toLocaleLowerCase();
+  const isAdmin = normalizedRole === ROLES.ADMIN;
+  const hasManagementAccess = isAdmin || normalizedRole === ROLES.MANAGER;
+  const userIdentitySet = new Set(
+    [user?.id, user?.username, user?.userId, user?.user_id]
+      .filter(Boolean)
+      .map(value => String(value).trim().toLocaleLowerCase())
+  );
+
+  const normalizeMembers = value => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string' || !value.trim()) return [];
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // Support legacy PostgreSQL array strings such as {user-1,user-2}.
+    }
+    return value
+      .replace(/^\{|\}$/g, '')
+      .split(',')
+      .map(member => member.replace(/^"|"$/g, '').trim())
+      .filter(Boolean);
+  };
+
+  const userChannels = channels.filter(channel => {
+    if (channel.type === 'voice') return false;
+    if (hasManagementAccess) return true;
+    return normalizeMembers(channel.users).some(memberId =>
+      userIdentitySet.has(String(memberId).trim().toLocaleLowerCase())
+    );
   });
-  
-  const userChannels = getUserChannels(userIdForChannels, userRole);
-  
-  // Track voice room participants for all channels
-  // Pass the current user ID to ensure accurate counting
-  const userIdForParticipants = user?.id || user?.username || user?.userId;
-  const { counts: voiceRoomParticipantCounts, participantDetails: voiceRoomParticipantDetails } = useVoiceRoomParticipants(channels, userIdForParticipants);
-  
-  // Debug logging
-  useEffect(() => {
-    console.log('Chat component - User info:', {
-      userId: user?.id,
-      username: user?.username,
-      userIdForChannels,
-      userRole,
-      isAdmin,
-      totalChannels: channels.length,
-      userChannelsCount: userChannels.length,
-      voiceChannels: userChannels.filter(ch => ch.type === 'voice').length,
-      textChannels: userChannels.filter(ch => ch.type !== 'voice').length,
-      allChannelIds: channels.map(ch => ({ id: ch.id, name: ch.name, type: ch.type, users: ch.users }))
-    });
-  }, [user?.id, user?.username, userIdForChannels, userRole, isAdmin, channels.length, userChannels.length]);
 
   // Get selected channel data
-  const currentChannel = channels.find(ch => ch.id === selectedChannel);
+  const currentChannel = userChannels.find(ch => ch.id === selectedChannel);
 
   // Initialize store and load channels from Supabase - FIXED: Only run once on mount
   useEffect(() => {
@@ -156,8 +145,9 @@ export default function Chat() {
           setEditingChannel(channel);
           setShowUserManagement(true);
         }}
-        onDeleteChannel={(channelId) => {
-          deleteChannel(channelId);
+        onDeleteChannel={async (channelId) => {
+          const success = await deleteChannel(channelId);
+          if (!success) return;
           // If deleted channel was selected, clear selection
           if (selectedChannel === channelId) {
             selectChannel(null);
@@ -166,41 +156,26 @@ export default function Chat() {
         onDeleteSection={deleteSection}
         onReorderSections={reorderSections}
         onReorderChannels={reorderChannels}
-        voiceRoomParticipantCounts={voiceRoomParticipantCounts}
-        voiceRoomParticipantDetails={voiceRoomParticipantDetails}
         allUsers={allUsers}
-        employees={employees}
       />
       </div>
 
       {/* Main Chat Window */}
       <div className="flex-1 flex flex-col bg-[#010333]">
         {selectedChannel && currentChannel ? (
-          currentChannel.type === 'voice' ? (
-            <VoiceRoom
-              channel={currentChannel}
-              userId={user?.id}
-              userName={user?.name || user?.username}
-              userAvatar={user?.avatar || user?.image}
-              allUsers={allUsers}
-              employees={employees}
-              currentParticipantCount={voiceRoomParticipantCounts[currentChannel.id] || 0}
-            />
-          ) : (
-            <ChatWindow
-              channel={currentChannel}
-              isAdmin={isAdmin}
-              selectedChannelId={selectedChannel}
-              onManageUsers={() => {
-                setEditingChannel(currentChannel);
-                setShowUserManagement(true);
-              }}
-              onEditChannel={() => {
-                setEditingChannel(currentChannel);
-                setShowCreateChannel(true);
-              }}
-            />
-          )
+          <ChatWindow
+            channel={currentChannel}
+            isAdmin={isAdmin}
+            selectedChannelId={selectedChannel}
+            onManageUsers={() => {
+              setEditingChannel(currentChannel);
+              setShowUserManagement(true);
+            }}
+            onEditChannel={() => {
+              setEditingChannel(currentChannel);
+              setShowCreateChannel(true);
+            }}
+          />
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
@@ -257,4 +232,3 @@ export default function Chat() {
     </div>
   );
 }
-

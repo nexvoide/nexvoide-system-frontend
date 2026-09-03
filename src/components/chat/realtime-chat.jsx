@@ -289,6 +289,8 @@ export const RealtimeChat = ({
       {/* Fixed Input */}
       <div className='absolute bottom-0 left-0 w-full px-4 py-3 border-t border-slate-800/50 bg-gradient-to-t from-slate-950 via-slate-950 to-transparent backdrop-blur-sm'>
       <MessageInput
+        channelId={roomName}
+        userId={user?.id}
         onSend={handleSendMessage}
         readOnly={readOnly}
         isAdmin={isAdmin}

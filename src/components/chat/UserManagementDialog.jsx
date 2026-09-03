@@ -6,220 +6,35 @@ import { useChatStore } from '../../stores/chatStore.js';
 export default function UserManagementDialog({ channel, allUsers = [], onClose }) {
   const { updateChannelUsers } = useChatStore();
   
-  // Initialize selected users from channel, but normalize them
   const initializeSelectedUsers = (channelUsers) => {
-    if (!channelUsers || !Array.isArray(channelUsers) || channelUsers.length === 0) {
-      return [];
-    }
-    
-    // Normalize the channel users to match against allUsers
-    const normalized = channelUsers.map(chUserId => String(chUserId).trim());
-    
-    console.log('UserManagementDialog - Initializing selected users:', {
-      channelUsers,
-      normalized,
-      allUsersCount: allUsers.length
-    });
-    
-    return normalized;
+    if (!Array.isArray(channelUsers)) return [];
+    return [...new Set(channelUsers.map(String).map(id => id.trim()).filter(Boolean))];
   };
   
   const [selectedUsers, setSelectedUsers] = useState(() => initializeSelectedUsers(channel?.users));
 
   useEffect(() => {
     const normalized = initializeSelectedUsers(channel?.users);
-    console.log('UserManagementDialog - Channel changed, updating selected users:', {
-      channelId: channel?.id,
-      channelName: channel?.name,
-      channelUsers: channel?.users,
-      normalized
-    });
     setSelectedUsers(normalized);
   }, [channel]);
 
   const toggleUser = (userId) => {
     if (!userId) return;
-    
-    // Find the user in allUsers to get all their ID formats
-    const user = allUsers.find(u => {
-      const uId = u.id || u.username || u.user_id;
-      const normalizedUId = String(uId).trim().toLowerCase();
-      const normalizedUserId = String(userId).trim().toLowerCase();
-      
-      if (normalizedUId === normalizedUserId) return true;
-      
-      // Also check all ID fields
-      if (u.id && String(u.id).trim().toLowerCase() === normalizedUserId) return true;
-      if (u.username && String(u.username).trim().toLowerCase() === normalizedUserId) return true;
-      if (u.user_id && String(u.user_id).trim().toLowerCase() === normalizedUserId) return true;
-      
-      // Numeric match
-      const uIdNum = Number(uId);
-      const userIdNum = Number(userId);
-      if (!isNaN(uIdNum) && !isNaN(userIdNum) && uIdNum === userIdNum) return true;
-      
-      return false;
-    });
-    
-    // Get all ID formats for this user
-    const userAllIds = user ? [
-      user.id,
-      user.username,
-      user.user_id
-    ].filter(Boolean).map(id => String(id).trim()) : [String(userId).trim()];
-    
+    const canonicalId = String(userId).trim();
     setSelectedUsers(prev => {
-      // Check if ANY of the user's IDs are in the selected list
-      const isSelected = userAllIds.some(uid => {
-        return prev.some(selectedId => {
-          const normalizedSelected = String(selectedId).trim().toLowerCase();
-          const normalizedUid = String(uid).trim().toLowerCase();
-          
-          if (normalizedSelected === normalizedUid) return true;
-          
-          // Numeric match
-          const selectedNum = Number(selectedId);
-          const uidNum = Number(uid);
-          if (!isNaN(selectedNum) && !isNaN(uidNum) && selectedNum === uidNum) return true;
-          
-          return false;
-        });
-      });
-      
-      if (isSelected) {
-        // Remove ALL ID formats for this user
-        return prev.filter(selectedId => {
-          return !userAllIds.some(uid => {
-            const normalizedSelected = String(selectedId).trim().toLowerCase();
-            const normalizedUid = String(uid).trim().toLowerCase();
-            
-            if (normalizedSelected === normalizedUid) return true;
-            
-            // Numeric match
-            const selectedNum = Number(selectedId);
-            const uidNum = Number(uid);
-            if (!isNaN(selectedNum) && !isNaN(uidNum) && selectedNum === uidNum) return true;
-            
-            return false;
-          });
-        });
-      } else {
-        // Add ALL ID formats for this user to ensure matching works
-        const toAdd = userAllIds.filter(uid => {
-          // Don't add if already exists
-          return !prev.some(selectedId => {
-            const normalizedSelected = String(selectedId).trim().toLowerCase();
-            const normalizedUid = String(uid).trim().toLowerCase();
-            return normalizedSelected === normalizedUid;
-          });
-        });
-        
-        console.log('ToggleUser - Adding user:', {
-          userName: user?.name,
-          userId,
-          userAllIds,
-          toAdd,
-          currentSelected: prev
-        });
-        
-        return [...prev, ...toAdd];
-      }
+      const isSelected = prev.includes(canonicalId);
+      return isSelected ? prev.filter(id => id !== canonicalId) : [...prev, canonicalId];
     });
   };
 
-  const handleSave = () => {
-    console.log('UserManagementDialog - Saving users:', {
-      channelId: channel.id,
-      channelName: channel.name,
-      selectedUsers,
-      allUsersInfo: allUsers.map(u => ({
-        id: u.id,
-        username: u.username,
-        user_id: u.user_id,
-        name: u.name,
-        email: u.email
-      }))
-    });
-    
-    // Get all possible ID formats for each selected user to ensure matching works
-    // We'll save ALL possible ID formats so matching works regardless of which one is used
-    const userIdsToSave = [];
-    
-    selectedUsers.forEach(userId => {
-      // Find the user in allUsers - check all possible ID fields
-      const user = allUsers.find(u => {
-        // Check all ID fields
-        const allUserIds = [u.id, u.username, u.user_id].filter(Boolean);
-        
-        return allUserIds.some(uId => {
-          const normalizedUId = String(uId).trim().toLowerCase();
-          const normalizedUserId = String(userId).trim().toLowerCase();
-          
-          // Exact match
-          if (normalizedUId === normalizedUserId) return true;
-          
-          // Numeric match
-          const uIdNum = Number(uId);
-          const userIdNum = Number(userId);
-          if (!isNaN(uIdNum) && !isNaN(userIdNum) && uIdNum === userIdNum) return true;
-          
-          return false;
-        });
-      });
-      
-      if (user) {
-        // Save ALL possible ID formats to ensure matching works
-        // The order matches Chat.jsx: user?.id || user?.username || user?.userId || user?.user_id
-        // We save all of them so matching works regardless of which one is used
-        const idsToAdd = [];
-        
-        // Add in priority order (matching Chat.jsx logic: user?.id || user?.username || user?.userId)
-        // Note: allUsers from database has user_id, but logged-in user object has userId
-        if (user.id) idsToAdd.push(user.id);
-        if (user.username && !idsToAdd.includes(user.username)) idsToAdd.push(user.username);
-        // Check both user_id (from database) and userId (from logged-in user object)
-        const userIdValue = user.user_id || user.userId;
-        if (userIdValue && !idsToAdd.includes(userIdValue)) idsToAdd.push(userIdValue);
-        
-        // Remove duplicates (case-insensitive)
-        const uniqueIds = [];
-        idsToAdd.forEach(id => {
-          const normalizedId = String(id).trim().toLowerCase();
-          if (!uniqueIds.some(existing => String(existing).trim().toLowerCase() === normalizedId)) {
-            uniqueIds.push(id);
-          }
-        });
-        
-        // Add all unique IDs
-        uniqueIds.forEach(id => {
-          if (!userIdsToSave.some(existing => String(existing).trim().toLowerCase() === String(id).trim().toLowerCase())) {
-            userIdsToSave.push(id);
-          }
-        });
-        
-        console.log('Found user for ID', userId, ':', {
-          name: user.name,
-          primaryId: user.id || user.username || user.user_id,
-          allIdsToSave: uniqueIds,
-          allIds: { id: user.id, username: user.username, user_id: user.user_id }
-        });
-      } else {
-        // User not found, add the original userId
-        console.warn('User not found for ID:', userId, 'Available users:', allUsers.map(u => ({
-          name: u.name,
-          id: u.id,
-          username: u.username,
-          user_id: u.user_id
-        })));
-        if (!userIdsToSave.some(existing => String(existing).trim().toLowerCase() === String(userId).trim().toLowerCase())) {
-          userIdsToSave.push(userId);
-        }
-      }
-    });
-    
-    console.log('UserManagementDialog - Final user IDs to save:', userIdsToSave);
-    
-    updateChannelUsers(channel.id, userIdsToSave);
+  const handleSave = async () => {
+    const validUserIds = new Set(allUsers.map(user => String(user.id)).filter(Boolean));
+    const canonicalUserIds = selectedUsers.filter(id => validUserIds.has(id));
+    const success = await updateChannelUsers(channel.id, canonicalUserIds);
+    if (!success) {
+      alert('Failed to update channel users. Please try again.');
+      return;
+    }
     onClose();
   };
 
@@ -277,64 +92,8 @@ export default function UserManagementDialog({ channel, allUsers = [], onClose }
           {allUsers && allUsers.length > 0 ? (
             <div className="space-y-2">
               {allUsers.map((user) => {
-                // Use user.id as primary, fallback to username or user_id
-                const userId = user.id || user.username || user.user_id;
-                
-                // Check if user is selected - need to match against ALL possible ID formats
-                // The selectedUsers array might contain any of: user.id, user.username, user.user_id
-                const isSelected = selectedUsers.some(selectedId => {
-                  if (!selectedId || !userId) return false;
-                  
-                  const normalizedSelectedId = String(selectedId).trim().toLowerCase();
-                  const normalizedUserId = String(userId).trim().toLowerCase();
-                  
-                  // Direct match with primary userId
-                  if (normalizedSelectedId === normalizedUserId) {
-                    return true;
-                  }
-                  
-                  // Check against all possible user ID fields
-                  const userIdsToCheck = [
-                    user.id,
-                    user.username,
-                    user.user_id
-                  ].filter(Boolean).map(id => String(id).trim().toLowerCase());
-                  
-                  // Check if selectedId matches any of the user's IDs
-                  if (userIdsToCheck.some(uid => uid === normalizedSelectedId)) {
-                    return true;
-                  }
-                  
-                  // Try numeric comparison
-                  const selectedIdNum = Number(selectedId);
-                  const userIdNum = Number(userId);
-                  if (!isNaN(selectedIdNum) && !isNaN(userIdNum) && selectedIdNum === userIdNum) {
-                    return true;
-                  }
-                  
-                  // Also check numeric against all user ID fields
-                  for (const uid of [user.id, user.username, user.user_id]) {
-                    if (uid) {
-                      const uidNum = Number(uid);
-                      if (!isNaN(selectedIdNum) && !isNaN(uidNum) && selectedIdNum === uidNum) {
-                        return true;
-                      }
-                    }
-                  }
-                  
-                  return false;
-                });
-                
-                // Debug logging for first user to see matching logic
-                if (allUsers.indexOf(user) === 0) {
-                  console.log('UserManagementDialog - Checking user selection:', {
-                    userName: user.name,
-                    userId,
-                    userIds: { id: user.id, username: user.username, user_id: user.user_id },
-                    selectedUsers,
-                    isSelected
-                  });
-                }
+                const userId = String(user.id);
+                const isSelected = selectedUsers.includes(userId);
                 return (
                   <button
                     key={userId}
@@ -419,4 +178,3 @@ export default function UserManagementDialog({ channel, allUsers = [], onClose }
     </div>
   );
 }
-

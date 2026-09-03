@@ -2,10 +2,16 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { Plus, Pencil, Trash2, X, User, Shield, Users, Briefcase, Crown, Eye, EyeOff, Search, ChevronDown, Check } from "lucide-react";
 import { useAppStore } from "../stores/appStore.js";
-import { hashPassword, generatePassword } from "../utils/password.js";
+import { supabase } from "../lib/supabase.js";
 import { ROLES, ROLE_LABELS, getRoleBadgeProps, normalizeRoles } from "../utils/permissions.js";
 import * as db from "../lib/db.js";
 import RoleBadge from "../components/RoleBadge.jsx";
+
+const generatePassword = (length = 12) => {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
+  const values = crypto.getRandomValues(new Uint32Array(length));
+  return Array.from(values, value => alphabet[value % alphabet.length]).join('');
+};
 
 export default function UserManagement() {
   const { user: currentUser } = useAppStore();
@@ -191,14 +197,20 @@ export default function UserManagement() {
         avatar: form.avatar || null,
       };
 
-      if (form.password) {
-        userData.password_hash = hashPassword(form.password);
+      let savedUser;
+      if (editing) {
+        savedUser = await db.dbUsers.update(editing.id, userData);
+      } else {
+        savedUser = await db.dbUsers.create(userData);
       }
 
-      if (editing) {
-        await db.dbUsers.update(editing.id, userData);
-      } else {
-        await db.dbUsers.create(userData);
+      if (form.password) {
+        const targetUserId = editing?.id || savedUser?.id;
+        if (!targetUserId) throw new Error('Unable to determine the saved user identity');
+        const { data, error } = await supabase.functions.invoke('chat-auth', {
+          body: { action: 'set-user-password', user_id: targetUserId, password: form.password },
+        });
+        if (error || !data?.success) throw new Error('Unable to securely save the user password');
       }
 
       await loadUsers();
@@ -700,4 +712,3 @@ export default function UserManagement() {
     </div>
   );
 }
-

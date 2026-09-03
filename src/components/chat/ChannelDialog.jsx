@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Hash, Edit2, FolderPlus, Mic } from 'lucide-react';
+import { X, Hash, Edit2, FolderPlus } from 'lucide-react';
 import { useChatStore } from '../../stores/chatStore.js';
 
 export default function ChannelDialog({ onClose, editing, sections, userId, onCreateSection }) {
@@ -23,9 +23,9 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
   const [section, setSection] = useState(editing?.section ? getSectionName(editing.section) : getDefaultSection());
   const [description, setDescription] = useState(editing?.description || '');
   const [readOnly, setReadOnly] = useState(editing?.readOnly || false);
-  const [channelType, setChannelType] = useState(editing?.type || 'text');
-  const [userLimit, setUserLimit] = useState(editing?.userLimit || null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
 
   // Update form when editing changes
   useEffect(() => {
@@ -35,15 +35,11 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
       setSection(editing.section ? getSectionName(editing.section) : defaultSectionName);
       setDescription(editing.description || '');
       setReadOnly(editing.readOnly || false);
-      setChannelType(editing.type || 'text');
-      setUserLimit(editing.userLimit || null);
     } else {
       setName('');
       setSection(defaultSectionName);
       setDescription('');
       setReadOnly(false);
-      setChannelType('text');
-      setUserLimit(null);
     }
   }, [editing, sections]);
 
@@ -60,8 +56,9 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
     };
   }, []);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
     if (!name.trim()) {
       alert('Channel name is required');
       return;
@@ -75,32 +72,43 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
       return;
     }
 
-    if (editing) {
-      updateChannel(editing.id, {
+    setIsSaving(true);
+    const success = editing
+      ? await updateChannel(editing.id, {
         name: name.trim(),
         section: sectionName,
         description: description.trim(),
         readOnly,
-        type: channelType,
-        userLimit: channelType === 'voice' ? (userLimit ? parseInt(userLimit) : null) : null,
-      });
-    } else {
-      createChannel({
+        type: 'text',
+        userLimit: null,
+      })
+      : await createChannel({
         name: name.trim(),
         section: sectionName,
         description: description.trim(),
         readOnly,
-        type: channelType,
-        userLimit: channelType === 'voice' ? (userLimit ? parseInt(userLimit) : null) : null,
+        type: 'text',
+        userLimit: null,
         createdBy: userId,
       });
+    setIsSaving(false);
+
+    if (!success) {
+      setError(`Failed to ${editing ? 'update' : 'create'} channel. Verify that the Phase 1 database migration has been applied.`);
+      return;
     }
     onClose();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (editing) {
-      deleteChannel(editing.id);
+      setIsSaving(true);
+      const success = await deleteChannel(editing.id);
+      setIsSaving(false);
+      if (!success) {
+        setError('Failed to delete channel. Please try again.');
+        return;
+      }
       onClose();
     }
   };
@@ -118,11 +126,7 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
         {/* Header */}
         <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-800 flex items-center justify-between flex-shrink-0 sticky top-0 bg-[#0a0a1a] z-10">
           <div className="flex items-center gap-2 sm:gap-3">
-            {channelType === 'voice' ? (
-              <Mic size={18} className="sm:w-5 sm:h-5 text-[#3b82f6]" />
-            ) : (
-              editing ? <Edit2 size={18} className="sm:w-5 sm:h-5 text-[#3b82f6]" /> : <Hash size={18} className="sm:w-5 sm:h-5 text-[#3b82f6]" />
-            )}
+            {editing ? <Edit2 size={18} className="sm:w-5 sm:h-5 text-[#3b82f6]" /> : <Hash size={18} className="sm:w-5 sm:h-5 text-[#3b82f6]" />}
             <h3 className="text-base sm:text-lg font-bold text-white">
               {editing ? 'Edit Channel' : 'Create Channel'}
             </h3>
@@ -151,39 +155,6 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
               required
               autoFocus
             />
-          </div>
-
-          {/* Channel Type */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Channel Type
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setChannelType('text')}
-                className={`px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
-                  channelType === 'text'
-                    ? 'border-[#3b82f6] bg-[#3b82f6]/20 text-[#3b82f6]'
-                    : 'border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-600'
-                }`}
-              >
-                <Hash size={18} />
-                <span className="font-medium">Text Channel</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setChannelType('voice')}
-                className={`px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
-                  channelType === 'voice'
-                    ? 'border-[#3b82f6] bg-[#3b82f6]/20 text-[#3b82f6]'
-                    : 'border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-600'
-                }`}
-              >
-                <Mic size={18} />
-                <span className="font-medium">Voice Room</span>
-              </button>
-            </div>
           </div>
 
           {/* Section */}
@@ -234,9 +205,8 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
             />
           </div>
 
-          {/* Read-Only Option (only for text channels) */}
-          {channelType === 'text' && (
-            <div className="flex items-center gap-3 p-3 bg-slate-800/30 rounded-lg border border-slate-700">
+          {/* Read-Only Option */}
+          <div className="flex items-center gap-3 p-3 bg-slate-800/30 rounded-lg border border-slate-700">
               <input
                 type="checkbox"
                 id="readOnly"
@@ -250,43 +220,10 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
                   Users can view messages but only admins can send messages
                 </div>
               </label>
-            </div>
-          )}
-
-          {/* User Limit (only for voice rooms) */}
-          {channelType === 'voice' && (
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                User Limit (Optional)
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="1"
-                  max="50"
-                  value={userLimit || ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setUserLimit(value === '' ? null : value);
-                  }}
-                  placeholder="No limit"
-                  className="flex-1 px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3b82f6] focus:border-transparent"
-                />
-                <button
-                  type="button"
-                  onClick={() => setUserLimit(null)}
-                  className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors text-sm"
-                >
-                  Clear
-                </button>
-              </div>
-              <p className="text-xs text-slate-400 mt-1">
-                Maximum number of users allowed in this voice room. Leave empty for unlimited.
-              </p>
-            </div>
-          )}
+          </div>
 
           {/* Actions */}
+          {error && <p className="text-sm text-red-400">{error}</p>}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-4 border-t border-slate-800">
             {editing && (
               <button
@@ -307,9 +244,10 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
               </button>
               <button
                 type="submit"
+                disabled={isSaving}
                 className="flex-1 sm:flex-none px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg transition-colors font-medium"
               >
-                {editing ? 'Save Changes' : 'Create Channel'}
+                {isSaving ? 'Saving...' : editing ? 'Save Changes' : 'Create Channel'}
               </button>
             </div>
           </div>
@@ -320,8 +258,7 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
           <div className="px-6 pb-6">
             <div className="bg-red-600/10 border border-red-600/30 rounded-lg p-4">
               <p className="text-sm text-red-400 mb-3">
-                Are you sure you want to delete {channelType === 'voice' ? 'this voice room' : 'this channel'}? This action cannot be undone.
-                {channelType === 'voice' && ' All participants will be disconnected.'}
+                Are you sure you want to delete this channel? This action cannot be undone.
               </p>
               <div className="flex gap-2">
                 <button
@@ -332,6 +269,7 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
                 </button>
                 <button
                   onClick={handleDelete}
+                  disabled={isSaving}
                   className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition-colors"
                 >
                   Delete
@@ -344,4 +282,3 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
     </div>
   );
 }
-

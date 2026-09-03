@@ -70,6 +70,7 @@ export const useAppStore = create((set, get) => ({
   // User/Role state
   user: null, // { role (string|array), name, email, service?, userId? }
   userRole: null, // Primary user role (for backward compatibility, first role or highest priority)
+  authInitialized: false,
 
   // Initialize - load all data from Supabase (optimized for speed)
   async initialize() {
@@ -647,33 +648,40 @@ export const useAppStore = create((set, get) => ({
       userId: userData.userId || '', // For Employee/Client
     };
     set({ user, userRole: user.role });
-    // Save to localStorage
-    try {
-      localStorage.setItem('nexvoide_user', JSON.stringify(user));
-    } catch (e) {
-      console.warn('Failed to save user to localStorage:', e);
-    }
   },
 
-  loadUser() {
+  async loadUser() {
     try {
-      const saved = localStorage.getItem('nexvoide_user');
-      if (saved) {
-        const user = JSON.parse(saved);
-        // Normalize role to array format
-        user.role = normalizeRoles(user.role, 'admin');
-        const primaryRole = getPrimaryRole(user.role, 'admin');
-        
-        set({ user, userRole: primaryRole });
-        return user;
+      const { supabase } = await import('../lib/supabase.js');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!session?.user?.id) {
+        set({ user: null, userRole: null, authInitialized: true });
+        return null;
       }
+      const { data: profile, error } = await supabase.from('users')
+        .select('id, username, name, email, role, avatar, active, service, user_id, auth_user_id')
+        .eq('auth_user_id', session.user.id).eq('active', true).single();
+      if (error || !profile) throw error || new Error('Authenticated profile not found');
+      const roles = normalizeRoles(profile.role, 'employee');
+      const user = {
+        id: profile.id,
+        authUserId: profile.auth_user_id,
+        role: roles,
+        name: profile.name,
+        email: profile.email || session.user.email || '',
+        avatar: profile.avatar || null,
+        service: profile.service || '',
+        userId: profile.user_id || '',
+        username: profile.username,
+      };
+      set({ user, userRole: getPrimaryRole(roles, 'employee'), authInitialized: true });
+      return user;
     } catch (e) {
-      console.warn('Failed to load user from localStorage:', e);
+      console.error('Failed to restore authenticated user:', e);
+      set({ user: null, userRole: null, authInitialized: true });
+      return null;
     }
-    // Default to admin if no user found
-    const defaultUser = { role: ['admin'], name: 'Admin', email: '', service: '', userId: '' };
-    set({ user: defaultUser, userRole: 'admin' });
-    return defaultUser;
   },
 
   async clearUser() {
@@ -690,19 +698,18 @@ export const useAppStore = create((set, get) => ({
         console.warn('Failed to remove user from online status:', e);
       }
     }
+    const { supabase } = await import('../lib/supabase.js');
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
     set({ user: null, userRole: null });
-    try {
-      localStorage.removeItem('nexvoide_user');
-    } catch (e) {
-      console.warn('Failed to clear user from localStorage:', e);
-    }
+    localStorage.removeItem('nexvoide_user');
   },
 
   // Login function - Simple and straightforward
   async login(username, password) {
     try {
       // Ensure Supabase is ready before attempting login
-      const { initializeSupabase, isSupabaseConfigured } = await import('../lib/supabase.js');
+      const { initializeSupabase, isSupabaseConfigured, supabase } = await import('../lib/supabase.js');
       
       if (!isSupabaseConfigured) {
         throw new Error('Database is not configured. Please contact administrator.');
@@ -714,68 +721,21 @@ export const useAppStore = create((set, get) => ({
         throw new Error('Unable to connect to database. Please check your connection and try again.');
       }
       
-      // Normalize username
       const normalizedUsername = username.trim();
-      
-      // Get user by username (always from Supabase, no localStorage fallback)
-      const user = await db.dbUsers.getByUsername(normalizedUsername);
-      
-      if (!user) {
-        throw new Error('Invalid username or password');
-      }
-      
-      // Check if user is active
-      if (user.active === false) {
-        throw new Error('Account is inactive. Please contact administrator.');
-      }
-      
-      // Get password hash (handle both snake_case and camelCase)
-      const passwordHash = user.password_hash || user.passwordHash;
-      
-      if (!passwordHash) {
-        throw new Error('Invalid username or password');
-      }
-      
-      // Verify password using hashing utility
-      const { verifyPassword } = await import('../utils/password.js');
-      const providedPassword = String(password).trim();
-      const storedHash = String(passwordHash).trim();
-      
-      const isValid = verifyPassword(providedPassword, storedHash);
-      
-      if (!isValid) {
-        throw new Error('Invalid username or password');
-      }
-      
-      // Set user in store immediately (don't wait for last_login update)
-      // Normalize role to array format
-      const roles = normalizeRoles(user.role, 'admin');
-      const primaryRole = getPrimaryRole(roles, 'admin');
-      
-      const userData = {
-        id: user.id,
-        role: roles, // Store as array
-        name: user.name,
-        email: user.email || '',
-        service: user.service || '',
-        userId: user.user_id || '',
-        username: user.username,
-      };
-      
-      set({ user: userData, userRole: primaryRole });
-      
-      // Save to localStorage immediately
-      try {
-        localStorage.setItem('nexvoide_user', JSON.stringify(userData));
-      } catch (e) {
-        // Silent fail
-      }
-      
-      // Update last login asynchronously (don't block login response)
-      db.dbUsers.update(user.id, { last_login: new Date().toISOString() }).catch(() => {
-        // Silent fail
+      if (!normalizedUsername || !password) throw new Error('Invalid username or password');
+      const { data, error: functionError } = await supabase.functions.invoke('chat-auth', {
+        body: { username: normalizedUsername, password: String(password) },
       });
-      
+      if (functionError || !data?.access_token || !data?.refresh_token) {
+        throw new Error('Invalid username or password');
+      }
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+      });
+      if (sessionError) throw new Error('Unable to establish secure session');
+      const userData = await get().loadUser();
+      if (!userData) throw new Error('Authenticated profile not found');
       return userData;
     } catch (error) {
       throw error;
@@ -790,5 +750,3 @@ export function convert(amount, from, to, rate) {
   if (from === "PKR" && to === "USD") return a / (rate || 1);
   return a;
 }
-
-

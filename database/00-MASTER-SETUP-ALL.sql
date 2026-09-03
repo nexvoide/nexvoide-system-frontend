@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS users (
     service TEXT,
     user_id TEXT,
     password_hash TEXT NOT NULL,
+    auth_user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
     last_login TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -163,7 +164,7 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 -- Chat sections table
 CREATE TABLE IF NOT EXISTS sections (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
     emoji TEXT DEFAULT '📁',
     "order" INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -178,10 +179,20 @@ CREATE TABLE IF NOT EXISTS channels (
     users TEXT[] DEFAULT '{}',
     read_only BOOLEAN DEFAULT false,
     "order" INTEGER DEFAULT 0,
-    section_name TEXT,
+    section_name TEXT REFERENCES sections(name) ON UPDATE CASCADE ON DELETE RESTRICT,
+    description TEXT NOT NULL DEFAULT '',
+    created_by TEXT,
     user_limit INTEGER,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS channel_members (
+    channel_id UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    PRIMARY KEY (channel_id, user_id)
 );
 
 -- Chat messages table
@@ -189,6 +200,7 @@ CREATE TABLE IF NOT EXISTS messages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     channel_id UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL,
+    author_id UUID REFERENCES users(id) ON DELETE RESTRICT,
     user_name TEXT NOT NULL,
     user_avatar TEXT,
     content TEXT NOT NULL,
@@ -653,4 +665,3 @@ ON CONFLICT DO NOTHING;
 -- 2. Verify Storage: Storage > Buckets
 -- 3. Test your app!
 -- ============================================================================
-

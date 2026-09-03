@@ -30,19 +30,7 @@ function getLatencyEndpoints() {
     endpoints.push(customEndpoint);
   }
   
-  // 2. Supabase endpoint (if configured) - Supabase has good global coverage
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  if (supabaseUrl) {
-    // Use Supabase REST API health endpoint (very lightweight)
-    try {
-      const url = new URL(supabaseUrl);
-      endpoints.push(`${url.origin}/rest/v1/`);
-    } catch (e) {
-      // Invalid URL, skip
-    }
-  }
-  
-  // 3. Backend server endpoint (if configured)
+  // 2. Backend server endpoint (if configured)
   const backendUrl = import.meta.env.VITE_SOCKET_SERVER_URL || 
                      import.meta.env.VITE_VOICE_SERVER_URL;
   if (backendUrl) {
@@ -55,13 +43,13 @@ function getLatencyEndpoints() {
     }
   }
   
-  // 4. Local resource (very fast)
+  // 3. Local resource (very fast)
   endpoints.push('/favicon.ico');
   
-  // 5. Cloudflare CDN (fast globally, good for Pakistan)
+  // 4. Cloudflare CDN (fast globally, good for Pakistan)
   endpoints.push('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css');
   
-  // 6. Fast global CDN endpoints optimized for Asia (fallback if custom not set)
+  // 5. Fast global CDN endpoints optimized for Asia (fallback if custom not set)
   if (!customEndpoint) {
     endpoints.push('https://www.cloudflare.com/cdn-cgi/trace'); // Cloudflare trace (very lightweight)
     endpoints.push('https://1.1.1.1/cdn-cgi/trace'); // Cloudflare DNS (fast in Pakistan)
@@ -80,9 +68,9 @@ async function testEndpoint(endpoint, timeout = 3000) {
   const timeoutId = setTimeout(() => controller.abort(), timeout);
   
   try {
-    // Cloudflare trace endpoint works better with GET, others can use HEAD
-    const isCloudflareTrace = endpoint.includes('cdn-cgi/trace');
-    const method = isCloudflareTrace ? 'GET' : 'HEAD';
+    // Health/trace endpoints are designed for GET; static assets can use HEAD.
+    const requiresGet = endpoint.includes('cdn-cgi/trace');
+    const method = requiresGet ? 'GET' : 'HEAD';
     
     const url = endpoint + (endpoint.includes('?') ? '&' : '?') + 't=' + Date.now();
     
@@ -247,4 +235,3 @@ export function useConnectivity() {
     isLoading
   };
 }
-

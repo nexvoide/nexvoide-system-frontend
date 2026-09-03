@@ -117,6 +117,24 @@ const EMOJIS = [
   "😾",
 ];
 
+const MAX_CHAT_FILE_SIZE = 10 * 1024 * 1024;
+const ALLOWED_CHAT_FILE_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain',
+  'text/csv',
+  'application/rtf',
+  'application/zip',
+]);
+
+const isAllowedChatFile = file =>
+  file.type.startsWith('image/') || ALLOWED_CHAT_FILE_TYPES.has(file.type);
+
 const formatBytes = (bytes, decimals = 2) => {
   if (bytes === 0) return "0 Bytes";
   const k = 1024;
@@ -135,6 +153,8 @@ export default function MessageInput({
   editingMessage = null,
   onCancelReply = null,
   allUsers = [],
+  channelId,
+  userId,
 }) {
   const [message, setMessage] = useState(editingMessage?.content || "");
   const [showEmojis, setShowEmojis] = useState(false);
@@ -146,6 +166,8 @@ export default function MessageInput({
   const fileInputRef = useRef(null);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const isDisabled = (readOnly && !isAdmin) || !isConnected;
+  const hasUploadedFiles = uploadedFiles.some(file => file.uploaded && file.url);
+  const hasUploadingFiles = uploadedFiles.some(file => file.uploading);
 
   // Update message when editing
   useEffect(() => {
@@ -215,7 +237,8 @@ export default function MessageInput({
       const baseName = file.name || `file-${timestamp}`;
       const ext = baseName.includes(".") ? baseName.split(".").pop() : "";
       const uniqueName = ext ? `${timestamp}-${randomId}.${ext}` : `${timestamp}-${randomId}`;
-      const filePath = `chat-uploads/${uniqueName}`;
+      if (!channelId || !userId) throw new Error('Authenticated channel identity is required');
+      const filePath = `channels/${channelId}/${userId}/${uniqueName}`;
 
       const { error } = await supabase.storage
         .from("chat-files")
@@ -236,9 +259,10 @@ export default function MessageInput({
         return;
       }
 
-      const { data: urlData } = supabase.storage
+      const { data: urlData, error: urlError } = await supabase.storage
         .from("chat-files")
-        .getPublicUrl(filePath);
+        .createSignedUrl(filePath, 3600);
+      if (urlError) throw urlError;
 
       setUploadedFiles((prev) =>
         prev.map((f) =>
@@ -248,7 +272,7 @@ export default function MessageInput({
                 uploading: false,
                 uploaded: true,
                 uploadPath: filePath,
-                url: urlData?.publicUrl || null,
+                url: urlData?.signedUrl || null,
                 error: null,
               }
             : f
@@ -340,8 +364,24 @@ export default function MessageInput({
     const selectedFiles = Array.from(e.target.files || []);
     if (selectedFiles.length === 0) return;
 
+    const validFiles = selectedFiles.filter(file => {
+      if (file.size > MAX_CHAT_FILE_SIZE) {
+        alert(`"${file.name}" is larger than the 10 MB chat attachment limit.`);
+        return false;
+      }
+      if (!isAllowedChatFile(file)) {
+        alert(`"${file.name}" is not supported. Video files are blocked; use an image or supported document.`);
+        return false;
+      }
+      return true;
+    });
+    if (validFiles.length === 0) {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     // Add files with previews and start upload
-    const newFiles = selectedFiles.map((file) => {
+    const newFiles = validFiles.map((file) => {
       const preview = URL.createObjectURL(file);
       return {
         name: file.name,
@@ -620,7 +660,7 @@ export default function MessageInput({
             type='file'
             onChange={handleFileSelect}
             className='hidden'
-            accept='image/*,video/*,.pdf,.doc,.docx,.txt'
+            accept='image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.rtf,.zip'
           />
 
           <div className='absolute right-2 bottom-3.5 flex items-center gap-1'>
@@ -656,13 +696,15 @@ export default function MessageInput({
         {/* Send Button */}
         <button
           type='submit'
-          disabled={!message.trim() || isDisabled}
+          disabled={(!message.trim() && !hasUploadedFiles) || hasUploadingFiles || isDisabled}
           className='p-3 bg-gradient-to-br from-[#3b82f6] to-[#2563eb] hover:from-[#2563eb] hover:to-[#1d4ed8] disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed rounded-xl transition-all duration-200 shadow-lg hover:shadow-blue-500/20 disabled:shadow-none hover:scale-105 active:scale-95'
           title={
             !isConnected
               ? "Connecting..."
               : readOnly && !isAdmin
               ? "Channel is read-only"
+              : hasUploadingFiles
+              ? "Wait for attachments to finish uploading"
               : "Send message"
           }>
           <Send size={20} className='text-white' />

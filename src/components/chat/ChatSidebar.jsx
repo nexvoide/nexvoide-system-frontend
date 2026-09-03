@@ -53,7 +53,9 @@ export default function ChatSidebar({
   };
 
   const getChannelsForSection = (section) => {
-    return channels.filter(ch => ch.section === section);
+    return channels
+      .filter(ch => ch.section === section)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   };
 
   // Section drag handlers
@@ -75,7 +77,7 @@ export default function ChatSidebar({
     setDragOverSection(null);
   };
 
-  const handleSectionDrop = (e, targetSectionName) => {
+  const handleSectionDrop = async (e, targetSectionName) => {
     if (!isAdmin || !draggedSection || draggedSection === targetSectionName) return;
     e.preventDefault();
     e.stopPropagation();
@@ -106,7 +108,8 @@ export default function ChatSidebar({
     });
     
     if (onReorderSections) {
-      onReorderSections(newOrder);
+      const success = await onReorderSections(newOrder);
+      if (!success) window.alert('Failed to save section order. Please try again.');
     } else {
       console.warn('onReorderSections callback not provided');
     }
@@ -134,7 +137,7 @@ export default function ChatSidebar({
     setDragOverChannel(null);
   };
 
-  const handleChannelDrop = (e, targetChannelId, sectionName) => {
+  const handleChannelDrop = async (e, targetChannelId, sectionName) => {
     if (!isAdmin || !draggedChannel || draggedChannel.id === targetChannelId || draggedChannel.section !== sectionName) return;
     e.preventDefault();
     
@@ -142,13 +145,20 @@ export default function ChatSidebar({
     const currentOrder = sectionChannels.map(ch => ch.id);
     const draggedIndex = currentOrder.indexOf(draggedChannel.id);
     const targetIndex = currentOrder.indexOf(targetChannelId);
+
+    if (draggedIndex === -1 || targetIndex === -1) {
+      setDraggedChannel(null);
+      setDragOverChannel(null);
+      return;
+    }
     
     // Reorder array
     const newOrder = [...currentOrder];
     newOrder.splice(draggedIndex, 1);
     newOrder.splice(targetIndex, 0, draggedChannel.id);
     
-    onReorderChannels(sectionName, newOrder);
+    const success = await onReorderChannels(sectionName, newOrder);
+    if (!success) window.alert('Failed to save channel order. Please try again.');
     setDraggedChannel(null);
     setDragOverChannel(null);
   };
@@ -226,10 +236,7 @@ export default function ChatSidebar({
                         e.stopPropagation();
                         const channelCount = sectionChannels.length;
                         if (channelCount > 0) {
-                          if (window.confirm(`Delete section "${sectionName}"? This will also delete ${channelCount} channel${channelCount !== 1 ? 's' : ''} in this section.`)) {
-                            // Delete section with force flag (will delete channels too)
-                            onDeleteSection(sectionName, true);
-                          }
+                          window.alert(`Move or delete the ${channelCount} channel${channelCount !== 1 ? 's' : ''} in "${sectionName}" before deleting this section.`);
                         } else {
                           if (window.confirm(`Delete section "${sectionName}"?`)) {
                             onDeleteSection(sectionName);

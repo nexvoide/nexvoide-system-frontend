@@ -1405,7 +1405,7 @@ export const dbUsers = {
       // First try exact match (fastest)
       const queryPromise = supabase
         .from('users')
-        .select('*')
+        .select('id, username, name, email, role, avatar, active, service, user_id, auth_user_id, created_at, updated_at')
         .eq('username', username)
         .maybeSingle();
       
@@ -1438,7 +1438,7 @@ export const dbUsers = {
       // If exact match fails, try case-insensitive search
       const caseQueryPromise = supabase
         .from('users')
-        .select('*')
+        .select('id, username, name, email, role, avatar, active, service, user_id, auth_user_id, created_at, updated_at')
         .ilike('username', username)
         .maybeSingle();
       
@@ -1491,7 +1491,7 @@ export const dbUsers = {
     const { data, error } = await supabase
       .from('users')
       .insert(userData)
-      .select()
+      .select('id, username, name, email, role, avatar, active, service, user_id, auth_user_id, created_at, updated_at')
       .single();
     if (error) handleError(error, 'create user');
     // Sync to localStorage
@@ -1517,7 +1517,7 @@ export const dbUsers = {
         .from('users')
         .update({ ...updates, updated_at: new Date().toISOString() })
         .eq('id', id)
-        .select()
+        .select('id, username, name, email, role, avatar, active, service, user_id, auth_user_id, created_at, updated_at')
         .single();
       
       // If error mentions unknown column (like 'avatar'), retry without that field
@@ -1530,7 +1530,7 @@ export const dbUsers = {
           .from('users')
           .update({ ...updateDataNoAvatar, updated_at: new Date().toISOString() })
           .eq('id', id)
-          .select()
+          .select('id, username, name, email, role, active, service, user_id, auth_user_id, created_at, updated_at')
           .single();
         
         if (result.error) {
@@ -1806,4 +1806,3 @@ export const dbUserOnlineStatus = {
     }
   },
 };
-

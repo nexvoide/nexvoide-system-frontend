@@ -20,9 +20,10 @@ import PWAInstallPrompt from "../components/PWAInstallPrompt.jsx";
 import { getFilteredNavItems, ROLE_LABELS, normalizeRoles } from "../utils/permissions.js";
 import UserManagement from "../sections/UserManagement.jsx";
 import MonthlyArchives from "../sections/MonthlyArchives.jsx";
+import Chat from "../sections/Chat.jsx";
 
 function Shell() {
-  const { currency, rate, setCurrency, setRate, initialize, loading, user, userRole, setUser, loadUser, clearUser } = useAppStore();
+  const { currency, rate, setCurrency, setRate, initialize, loading, user, userRole, authInitialized, loadUser, clearUser } = useAppStore();
   const [tab, setTab] = useState("dashboard");
   const [dark, setDark] = useState(true);
   const [showLogin, setShowLogin] = useState(true); // Default to showing login
@@ -35,26 +36,23 @@ function Shell() {
     import('../lib/supabase.js').then(({ initializeSupabase }) => {
       initializeSupabase().catch(() => {}); // Don't block on errors
     });
-    // Initialize app immediately (uses cache first, then Supabase)
-    // This will only run once on mount, not on every render
-    initialize();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty array = only run on mount, preventing repeated fetches
 
   // Load user on mount (after Supabase init)
   useEffect(() => {
-    try {
-      const savedUser = loadUser();
-      if (!savedUser || !savedUser.role || !savedUser.username) {
-        setShowLogin(true);
-      } else {
-        setShowLogin(false);
-      }
-    } catch (error) {
+    loadUser().then(authenticatedUser => {
+      setShowLogin(!authenticatedUser);
+      if (authenticatedUser) initialize();
+    }).catch(error => {
       console.error('Error loading user:', error);
       setShowLogin(true);
-    }
+    });
   }, []); // Empty dependency array - only run on mount
+
+  useEffect(() => {
+    if (user && !useAppStore.getState().initialized) initialize();
+  }, [user, initialize]);
 
   // Watch for user changes and update showLogin accordingly
   useEffect(() => {
@@ -124,11 +122,19 @@ function Shell() {
     setShowWelcome(false);
   };
 
-  const handleLogout = () => {
-    clearUser();
-    setShowLogin(true);
-    setTab("dashboard");
+  const handleLogout = async () => {
+    try {
+      await clearUser();
+      setShowLogin(true);
+      setTab("dashboard");
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
   };
+
+  if (!authInitialized) {
+    return <div className="min-h-screen bg-slate-950" aria-label="Restoring secure session" />;
+  }
 
   // Show welcome animation if just logged in
   if (showWelcome && user && user.name) {
@@ -281,18 +287,7 @@ function Shell() {
           {tab === "finance" && <Finance />}
           {tab === "setup" && <Setup />}
           {tab === "activity" && <ActivityLogs />}
-          {tab === "chat" && (
-            <div className="h-[60vh] flex items-center justify-center rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/40">
-              <div className="text-center px-6">
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">
-                  Chat system is currently paused
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Realtime chat & voice rooms are in beta and will be enabled in a future release.
-                </p>
-              </div>
-            </div>
-          )}
+          {tab === "chat" && <Chat />}
           {tab === "settings" && <SettingsSection />}
           {tab === "users" && <UserManagement />}
           {tab === "archives" && <MonthlyArchives />}

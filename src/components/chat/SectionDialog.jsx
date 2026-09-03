@@ -14,8 +14,9 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
   const [editEmoji, setEditEmoji] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [error, setError] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
 
-  const handleAddSection = (e) => {
+  const handleAddSection = async (e) => {
     e.preventDefault();
     setError('');
     
@@ -30,13 +31,18 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
       return;
     }
 
-    const success = addSection(trimmedName, newSectionEmoji);
-    if (success) {
-      setNewSectionName('');
-      setNewSectionEmoji('📁');
-      setError('');
-    } else {
-      setError('Failed to add section');
+    setIsAdding(true);
+    try {
+      const success = await addSection(trimmedName, newSectionEmoji);
+      if (success) {
+        setNewSectionName('');
+        setNewSectionEmoji('📁');
+        setError('');
+      } else {
+        setError('Failed to add section. Check the database connection and permissions.');
+      }
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -47,7 +53,7 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
     setError('');
   };
 
-  const handleSaveEdit = (oldName) => {
+  const handleSaveEdit = async (oldName) => {
     setError('');
     
     if (!editName.trim()) {
@@ -61,7 +67,7 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
       return;
     }
 
-    const success = updateSection(oldName, trimmedName, editEmoji);
+    const success = await updateSection(oldName, trimmedName, editEmoji);
     if (success) {
       setEditingSection(null);
       setEditName('');
@@ -79,9 +85,9 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
     setError('');
   };
 
-  const handleDeleteSection = (sectionName) => {
+  const handleDeleteSection = async (sectionName) => {
     if (window.confirm(`Are you sure you want to delete the section "${sectionName}"? This can only be done if no channels use this section.`)) {
-      const success = deleteSection(sectionName);
+      const success = await deleteSection(sectionName);
       if (!success) {
         alert('Cannot delete section. There are channels using this section. Please delete or move those channels first.');
       }
@@ -177,9 +183,10 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg transition-colors font-medium"
+                  disabled={isAdding}
+                  className="px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] disabled:cursor-not-allowed disabled:opacity-60 text-white rounded-lg transition-colors font-medium"
                 >
-                  Add
+                  {isAdding ? 'Adding...' : 'Add'}
                 </button>
               </div>
               {error && (

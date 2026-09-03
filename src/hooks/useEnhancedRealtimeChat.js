@@ -84,6 +84,32 @@ function resolveUserAvatar(userId, userName, allUsers = [], employees = []) {
   return null;
 }
 
+function resolveMessageUser(message, allUsers = [], employees = []) {
+  const canonicalId = message.author_id || message.user_id;
+  const canonicalUser = allUsers.find(user => String(user.id) === String(canonicalId));
+  const name = canonicalUser?.name || canonicalUser?.user_id || canonicalUser?.username || message.user_name || 'Unknown user';
+  const avatar = canonicalUser?.avatar
+    || canonicalUser?.profile_picture
+    || canonicalUser?.profilePicture
+    || canonicalUser?.avatar_url
+    || canonicalUser?.avatarUrl
+    || message.user_avatar
+    || resolveUserAvatar(canonicalId, name, allUsers, employees);
+
+  return { id: canonicalId, name, avatar: avatar || null };
+}
+
+async function resolveAttachmentUrls(attachments) {
+  if (!Array.isArray(attachments)) return null;
+  return Promise.all(attachments.map(async attachment => {
+    if (!attachment?.path) return attachment;
+    const { data, error } = await supabase.storage
+      .from('chat-files')
+      .createSignedUrl(attachment.path, 3600);
+    return { ...attachment, url: error ? null : data?.signedUrl || null };
+  }));
+}
+
 export function useEnhancedRealtimeChat({ 
   roomName, 
   username, 
@@ -158,18 +184,14 @@ export function useEnhancedRealtimeChat({
         const reversedData = data.reverse();
 
         // Transform database messages to match our format
-        const formattedMessages = reversedData.map((msg) => {
+        const formattedMessages = await Promise.all(reversedData.map(async (msg) => {
           // Resolve avatar from allUsers and employees if not present in message
-          const resolvedAvatar = msg.user_avatar || resolveUserAvatar(msg.user_id, msg.user_name, allUsers, employees);
+          const resolvedUser = resolveMessageUser(msg, allUsers, employees);
           
           return {
             id: msg.id,
             content: msg.content,
-            user: {
-              id: msg.user_id,
-              name: msg.user_name,
-              avatar: resolvedAvatar,
-            },
+            user: resolvedUser,
             createdAt: msg.created_at,
             mentions: msg.mentions || [],
             replyTo: msg.reply_to,
@@ -177,9 +199,9 @@ export function useEnhancedRealtimeChat({
             readBy: msg.read_by || [],
             isEdited: msg.is_edited || false,
             editedAt: msg.edited_at,
-            attachments: msg.attachments || null, // Include attachments
+            attachments: await resolveAttachmentUrls(msg.attachments),
           };
-        });
+        }));
 
         console.log("✅ Loaded", formattedMessages.length, "messages (last 50)");
         
@@ -204,16 +226,12 @@ export function useEnhancedRealtimeChat({
               
               if (!olderError && olderData && olderData.length > 50) {
                 // Only update if we got more messages
-                const allFormattedMessages = olderData.map((msg) => {
-                  const resolvedAvatar = msg.user_avatar || resolveUserAvatar(msg.user_id, msg.user_name, allUsers, employees);
+                const allFormattedMessages = await Promise.all(olderData.map(async (msg) => {
+                  const resolvedUser = resolveMessageUser(msg, allUsers, employees);
                   return {
                     id: msg.id,
                     content: msg.content,
-                    user: {
-                      id: msg.user_id,
-                      name: msg.user_name,
-                      avatar: resolvedAvatar,
-                    },
+                    user: resolvedUser,
                     createdAt: msg.created_at,
                     mentions: msg.mentions || [],
                     replyTo: msg.reply_to,
@@ -221,9 +239,9 @@ export function useEnhancedRealtimeChat({
                     readBy: msg.read_by || [],
                     isEdited: msg.is_edited || false,
                     editedAt: msg.edited_at,
-                    attachments: msg.attachments || null,
+                    attachments: await resolveAttachmentUrls(msg.attachments),
                   };
-                });
+                }));
                 
                 console.log("✅ Loaded additional", allFormattedMessages.length, "messages in background");
                 setMessages(allFormattedMessages);
@@ -244,6 +262,7 @@ export function useEnhancedRealtimeChat({
 
   // Setup realtime subscription
   useEffect(() => {
+    let disposed = false;
     setIsConnected(false);
 
     if (!supabase || !roomName) {
@@ -254,7 +273,6 @@ export function useEnhancedRealtimeChat({
     // Clean up previous channel if it exists
     if (channelRef.current) {
       console.log("🧹 Cleaning up previous channel subscription");
-      channelRef.current.unsubscribe().catch(err => console.warn("Error unsubscribing:", err));
       supabase.removeChannel(channelRef.current).catch(err => console.warn("Error removing channel:", err));
       channelRef.current = null;
     }
@@ -264,12 +282,12 @@ export function useEnhancedRealtimeChat({
 
     const newChannel = supabase.channel(uniqueChannelName, {
       config: {
-        broadcast: { self: false },
         presence: { key: '' }
       }
     });
 
-    // Subscribe to database changes - INSERT events
+    // Authenticated Postgres changes remain the source of truth. Once 005 is
+    // enabled, message RLS filters these events by canonical channel access.
     newChannel
       .on(
         "postgres_changes",
@@ -280,19 +298,16 @@ export function useEnhancedRealtimeChat({
           filter: `channel_id=eq.${roomName}`,
         },
         async (payload) => {
+          if (disposed) return;
           console.log("📨 New message from database:", payload.new);
 
           // Resolve avatar from allUsers and employees if not present in message
-          const resolvedAvatar = payload.new.user_avatar || resolveUserAvatar(payload.new.user_id, payload.new.user_name, allUsers, employees);
+          const resolvedUser = resolveMessageUser(payload.new, allUsers, employees);
           
           const newMessage = {
             id: payload.new.id,
             content: payload.new.content,
-            user: {
-              id: payload.new.user_id,
-              name: payload.new.user_name,
-              avatar: resolvedAvatar,
-            },
+            user: resolvedUser,
             createdAt: payload.new.created_at,
             mentions: payload.new.mentions || [],
             replyTo: payload.new.reply_to,
@@ -300,13 +315,12 @@ export function useEnhancedRealtimeChat({
             readBy: payload.new.read_by || [],
             isEdited: payload.new.is_edited || false,
             editedAt: payload.new.edited_at,
-            attachments: payload.new.attachments || null, // Include attachments
+            attachments: await resolveAttachmentUrls(payload.new.attachments),
           };
 
           setMessages((current) => {
             const exists = current.some((msg) => msg.id === newMessage.id);
             if (exists) {
-              console.log("⚠️ Duplicate message ignored:", newMessage.id);
               return current;
             }
             console.log("✅ Adding new message:", newMessage.id);
@@ -336,7 +350,9 @@ export function useEnhancedRealtimeChat({
           table: TABLES.messages,
           filter: `channel_id=eq.${roomName}`,
         },
-        (payload) => {
+        async (payload) => {
+          if (disposed) return;
+          const resolvedAttachments = await resolveAttachmentUrls(payload.new.attachments);
           // Update message delivery status or read receipts
           setMessages((current) =>
             current.map((msg) => {
@@ -357,7 +373,7 @@ export function useEnhancedRealtimeChat({
                   content: payload.new.content || msg.content,
                   isEdited: payload.new.is_edited || msg.isEdited,
                   editedAt: payload.new.edited_at || msg.editedAt,
-                  attachments: payload.new.attachments || msg.attachments || null,
+                  attachments: resolvedAttachments || msg.attachments || null,
                 };
               }
               return msg;
@@ -366,6 +382,8 @@ export function useEnhancedRealtimeChat({
         }
       )
       .subscribe((status, err) => {
+        if (disposed) return;
+
         console.log("🔌 Channel status for", uniqueChannelName, ":", status);
         if (err) {
           console.error("❌ Channel subscription error:", err);
@@ -393,9 +411,12 @@ export function useEnhancedRealtimeChat({
     setChannel(newChannel);
 
     return () => {
+      disposed = true;
       console.log("🧹 Cleaning up channel:", uniqueChannelName);
-      newChannel.unsubscribe();
-      supabase.removeChannel(newChannel);
+      if (channelRef.current === newChannel) {
+        channelRef.current = null;
+      }
+      supabase.removeChannel(newChannel).catch(err => console.warn("Error removing channel:", err));
     };
   }, [roomName, userId]);
 
@@ -423,14 +444,9 @@ export function useEnhancedRealtimeChat({
           attachmentData = await Promise.all(
             attachments.map(async (file) => {
               if (file.uploadPath) {
-                // Get public URL for uploaded file
-                const { data: urlData } = supabase.storage
-                  .from('chat-files')
-                  .getPublicUrl(file.uploadPath);
-                
                 return {
                   name: file.name,
-                  url: urlData.publicUrl,
+                  url: file.url || null,
                   path: file.uploadPath,
                   type: file.type || 'application/octet-stream',
                   size: file.size || 0,
@@ -447,15 +463,36 @@ export function useEnhancedRealtimeChat({
 
         // Resolve avatar from allUsers and employees if not provided
         const resolvedAvatar = userAvatar || resolveUserAvatar(userId, username, allUsers, employees);
+        const optimisticId = crypto.randomUUID();
+        const optimisticCreatedAt = new Date().toISOString();
         
         const messageData = {
+          id: optimisticId,
           // Content is required in base schema; allow empty string when sending attachments-only messages
           content: messageContent || '',
           channel_id: roomName,
+          author_id: userId,
           user_id: userId || "anonymous",
           user_name: username || "Anonymous",
           user_avatar: resolvedAvatar || null,
+          created_at: optimisticCreatedAt,
         };
+
+        const optimisticMessage = {
+          id: optimisticId,
+          content: messageContent,
+          user: { id: userId, name: username, avatar: resolvedAvatar },
+          createdAt: optimisticCreatedAt,
+          mentions,
+          replyTo: replyToId,
+          deliveryStatus: 'sending',
+          readBy: [],
+          isEdited: false,
+          editedAt: null,
+          attachments: attachmentData,
+        };
+
+        setMessages(current => [...current, optimisticMessage]);
 
         console.log("📤 Inserting message data (basic):", messageData);
 
@@ -502,6 +539,7 @@ export function useEnhancedRealtimeChat({
         }
 
         if (error) {
+          setMessages(current => current.filter(message => message.id !== optimisticId));
           console.error("❌ Error saving message:", error);
           console.error("❌ Error details:", {
             message: error.message,
@@ -514,6 +552,28 @@ export function useEnhancedRealtimeChat({
         }
 
         console.log("✅ Message saved to database:", data.id);
+
+        const confirmedMessage = {
+          id: data.id,
+          content: data.content,
+          user: {
+            ...resolveMessageUser(data, allUsers, employees),
+          },
+          createdAt: data.created_at,
+          mentions: data.mentions || mentions,
+          replyTo: data.reply_to || replyToId,
+          deliveryStatus: data.delivery_status || 'sent',
+          readBy: data.read_by || [],
+          isEdited: data.is_edited || false,
+          editedAt: data.edited_at || null,
+          attachments: data.attachments || attachmentData,
+        };
+
+        setMessages(current =>
+          current.some(message => message.id === confirmedMessage.id)
+            ? current.map(message => message.id === confirmedMessage.id ? confirmedMessage : message)
+            : [...current, confirmedMessage]
+        );
 
         // Create mention records for mentioned users
         if (mentions.length > 0) {
@@ -559,13 +619,10 @@ export function useEnhancedRealtimeChat({
       // Add user to read_by array
       const updatedReadBy = [...readBy, userId];
 
-      await supabase
-        .from(TABLES.messages)
-        .update({
-          read_by: updatedReadBy,
-          delivery_status: 'read', // Update delivery status if all recipients have read
-        })
-        .eq('id', messageId);
+      const { error: readError } = await supabase.rpc('mark_chat_message_read', {
+        requested_message_id: messageId,
+      });
+      if (readError) throw readError;
 
       // Update local state
       setMessages((current) =>
@@ -605,13 +662,9 @@ export function useEnhancedRealtimeChat({
         attachmentData = await Promise.all(
           attachments.map(async (file) => {
             if (file.uploadPath) {
-              const { data: urlData } = supabase.storage
-                .from('chat-files')
-                .getPublicUrl(file.uploadPath);
-              
               return {
                 name: file.name,
-                url: urlData.publicUrl,
+                url: file.url || null,
                 path: file.uploadPath,
                 type: file.type || 'application/octet-stream',
                 size: file.size || 0,
@@ -689,4 +742,3 @@ export function useEnhancedRealtimeChat({
     deliveryStatuses,
   };
 }
-

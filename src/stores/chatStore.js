@@ -38,10 +38,14 @@ const normalizeChannels = (channels) => {
   if (!Array.isArray(channels)) return [];
   return channels.map(ch => ({
     ...ch,
+    section: ch.section_name ?? ch.section ?? '',
+    description: ch.description ?? '',
     type: ch.type || 'text', // Default to 'text' if type is missing
-    users: ch.users || [],
-    readOnly: ch.readOnly || false,
-    userLimit: ch.userLimit || null, // User limit for voice rooms
+    users: Array.isArray(ch.users) ? ch.users : [],
+    readOnly: ch.read_only ?? ch.readOnly ?? false,
+    userLimit: ch.user_limit ?? ch.userLimit ?? null,
+    createdBy: ch.created_by ?? ch.createdBy ?? null,
+    createdAt: ch.created_at ?? ch.createdAt ?? null,
   }));
 };
 
@@ -93,6 +97,11 @@ const loadChannelsFromSupabase = async () => {
       return loadChatDataFromLocalStorage();
     }
 
+    const { data: membershipData, error: membershipError } = await supabase
+      .from('channel_members')
+      .select('channel_id, user_id');
+    if (membershipError) throw membershipError;
+
     // Load sections
     const { data: sectionsData, error: sectionsError } = await supabase
       .from(TABLES.sections)
@@ -103,8 +112,13 @@ const loadChannelsFromSupabase = async () => {
       console.error('Error loading sections from Supabase:', sectionsError);
     }
 
+    const membersByChannel = (membershipData || []).reduce((result, membership) => {
+      (result[membership.channel_id] ||= []).push(membership.user_id);
+      return result;
+    }, {});
     const channels = normalizeChannels((channelsData || []).map(ch => ({
       ...ch,
+      users: membersByChannel[ch.id] || [],
       userLimit: ch.user_limit || ch.userLimit || null, // Handle both snake_case and camelCase
     })));
     // Only use default sections if Supabase has never been initialized (no sections table data)
@@ -129,186 +143,6 @@ const loadChannelsFromSupabase = async () => {
   }
 };
 
-// Save channels to Supabase
-const saveChannelsToSupabase = async (channels, sections) => {
-  if (!isSupabaseConfigured || !supabase) {
-    console.log('Supabase not configured, saving to localStorage');
-    saveChatDataToLocalStorage(channels, {}, sections);
-    return;
-  }
-
-  try {
-    // Save channels using upsert (insert or update)
-    if (channels && channels.length > 0) {
-      const channelsToUpsert = channels.map(ch => {
-        // Ensure users is always an array and properly formatted for Supabase TEXT[] type
-        let usersArray = [];
-        if (ch.users) {
-          if (Array.isArray(ch.users)) {
-            usersArray = ch.users.filter(u => u != null && u !== '').map(u => String(u).trim());
-          } else {
-            usersArray = [String(ch.users).trim()];
-          }
-        }
-        
-        // Remove empty strings and nulls
-        usersArray = usersArray.filter(u => u && u !== '');
-        
-        console.log('Saving channel to Supabase:', {
-          id: ch.id,
-          name: ch.name,
-          users: usersArray,
-          usersType: typeof ch.users,
-          isArray: Array.isArray(ch.users),
-          usersLength: usersArray.length
-        });
-        
-        const channelData = {
-          id: ch.id,
-          name: ch.name,
-          section: ch.section,
-          description: ch.description || '',
-          users: usersArray.length > 0 ? usersArray : [], // Empty array if no users
-          read_only: ch.readOnly || false,
-          type: ch.type || 'text',
-          order: ch.order || 0,
-          created_by: ch.createdBy || null,
-          created_at: ch.createdAt || new Date().toISOString(),
-        };
-        
-        // Only include user_limit if it exists (for backward compatibility)
-        // If the column doesn't exist in the database, it will cause a 400 error
-        // We'll try to include it, but if it fails, we'll retry without it
-        if (ch.userLimit !== undefined && ch.userLimit !== null) {
-          channelData.user_limit = ch.userLimit;
-        }
-        
-        return channelData;
-      });
-
-      let { error: upsertError } = await supabase
-        .from(TABLES.channels)
-        .upsert(channelsToUpsert, { onConflict: 'id' });
-
-      // If error is about missing user_limit column, retry without it
-      if (upsertError && upsertError.message && upsertError.message.includes('user_limit')) {
-        console.warn('user_limit column not found, retrying without it...');
-        
-        // Remove user_limit from all channels and retry
-        const channelsWithoutLimit = channelsToUpsert.map(ch => {
-          const { user_limit, ...rest } = ch;
-          return rest;
-        });
-        
-        const { error: retryError } = await supabase
-          .from(TABLES.channels)
-          .upsert(channelsWithoutLimit, { onConflict: 'id' });
-        
-        if (retryError) {
-          upsertError = retryError;
-        } else {
-          console.log('Saved', channelsWithoutLimit.length, 'channels to Supabase (without user_limit)');
-          console.warn('Note: user_limit column is missing. Please run the migration SQL to add it.');
-          upsertError = null;
-        }
-      }
-
-      if (upsertError) {
-        console.error('Error saving channels to Supabase:', upsertError);
-        console.error('Error details:', {
-          message: upsertError.message,
-          details: upsertError.details,
-          hint: upsertError.hint,
-          code: upsertError.code,
-          channelsBeingSaved: channelsToUpsert.map(ch => ({
-            id: ch.id,
-            name: ch.name,
-            users: ch.users,
-            usersType: typeof ch.users,
-            usersIsArray: Array.isArray(ch.users)
-          }))
-        });
-        
-        // Handle specific errors
-        if (upsertError.code === '42P01') {
-          console.warn('Channels table does not exist. Please run the migration SQL.');
-        } else if (upsertError.code === '42703' && upsertError.message?.includes('updated_at')) {
-          console.error('❌ updated_at column missing from channels table!');
-          console.error('💡 Run this SQL in Supabase: ALTER TABLE channels ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();');
-          console.error('💡 Or run: database/fixes/add-updated-at-to-channels.sql');
-          // Still save to localStorage as fallback
-          saveChatDataToLocalStorage(channels, {}, sections);
-        }
-      } else if (!upsertError) {
-        console.log('✅ Saved', channelsToUpsert.length, 'channels to Supabase');
-      }
-    }
-
-    // Save sections using upsert
-    // Always save sections array (even if empty) to persist deletions
-    if (sections !== undefined && sections !== null) {
-      // First, get all existing sections from Supabase
-      const { data: existingSections } = await supabase
-        .from(TABLES.sections)
-        .select('name');
-      
-      const existingSectionNames = existingSections ? existingSections.map(s => s.name) : [];
-      const currentSectionNames = sections.map(sec => {
-        const secName = typeof sec === 'string' ? sec : sec.name;
-        return secName;
-      });
-      
-      // Delete sections that are no longer in the current list
-      const sectionsToDelete = existingSectionNames.filter(name => !currentSectionNames.includes(name));
-      if (sectionsToDelete.length > 0) {
-        const { error: deleteError } = await supabase
-          .from(TABLES.sections)
-          .delete()
-          .in('name', sectionsToDelete);
-        
-        if (deleteError) {
-          console.error('Error deleting sections from Supabase:', deleteError);
-        } else {
-          console.log('Deleted sections from Supabase:', sectionsToDelete);
-        }
-      }
-      
-      // Upsert current sections
-      if (sections.length > 0) {
-        const sectionsToUpsert = sections.map(sec => {
-          const secName = typeof sec === 'string' ? sec : sec.name;
-          const secEmoji = typeof sec === 'object' ? (sec.emoji || '📁') : '📁';
-          const secOrder = typeof sec === 'object' ? (sec.order || 0) : 0;
-          return {
-            name: secName,
-            emoji: secEmoji,
-            order: secOrder,
-          };
-        });
-
-        const { error: upsertSectionsError } = await supabase
-          .from(TABLES.sections)
-          .upsert(sectionsToUpsert, { onConflict: 'name' });
-
-        if (upsertSectionsError) {
-          console.error('Error saving sections to Supabase:', upsertSectionsError);
-          if (upsertSectionsError.code === '42P01') {
-            console.warn('Sections table does not exist. Please run the migration SQL.');
-          }
-        } else {
-          console.log('✅ Saved', sectionsToUpsert.length, 'sections to Supabase');
-        }
-      } else {
-        console.log('No sections to save (all sections deleted)');
-      }
-    }
-  } catch (error) {
-    console.error('Error saving to Supabase:', error);
-    // Fallback to localStorage
-    saveChatDataToLocalStorage(channels, {}, sections);
-  }
-};
-
 // Save to localStorage (fallback)
 const saveChatDataToLocalStorage = (channels, messages, sections) => {
   try {
@@ -320,6 +154,27 @@ const saveChatDataToLocalStorage = (channels, messages, sections) => {
   } catch (e) {
     console.warn('Failed to save chat data to localStorage:', e);
   }
+};
+
+const normalizeUserIds = (users = []) => [...new Set(
+  users.map(value => String(value).trim()).filter(Boolean)
+)];
+
+const toChannelRow = channel => ({
+  id: channel.id,
+  name: channel.name,
+  type: 'text',
+  read_only: Boolean(channel.readOnly),
+  order: Number.isInteger(channel.order) ? channel.order : 0,
+  section_name: channel.section,
+  description: channel.description || '',
+  created_by: channel.createdBy || null,
+});
+
+const requireData = (data, error, operation) => {
+  if (error) throw new Error(`${operation}: ${error.message}`);
+  if (!data) throw new Error(`${operation}: Supabase returned no data`);
+  return data;
 };
 
 // Default channels structure
@@ -423,7 +278,7 @@ export const useChatStore = create((set, get) => ({
   },
 
   // Reorder sections
-  reorderSections: (newOrder) => {
+  reorderSections: async (newOrder) => {
     const state = get();
     // newOrder is an array of section names in the desired order
     // Update each section's order based on its position in newOrder
@@ -446,12 +301,27 @@ export const useChatStore = create((set, get) => ({
       updatedSections: updatedSections.map(s => ({ name: s.name, order: s.order }))
     });
     
-    set({ sections: updatedSections });
-    saveChannelsToSupabase(state.channels, updatedSections);
+    try {
+      if (isSupabaseConfigured && supabase) {
+        for (const section of updatedSections) {
+          const query = supabase.from(TABLES.sections).update({ order: section.order });
+          const { data, error } = section.id
+            ? await query.eq('id', section.id).select('name').single()
+            : await query.eq('name', section.name).select('name').single();
+          requireData(data, error, `Failed to reorder section "${section.name}"`);
+        }
+      }
+      set({ sections: updatedSections });
+      saveChatDataToLocalStorage(state.channels, state.messages, updatedSections);
+      return true;
+    } catch (error) {
+      console.error(error);
+      return false;
+    }
   },
 
   // Reorder channels in a section
-  reorderChannels: (sectionName, newChannelOrder) => {
+  reorderChannels: async (sectionName, newChannelOrder) => {
     const state = get();
     const updatedChannels = state.channels.map(channel => {
       if (channel.section === sectionName) {
@@ -463,8 +333,25 @@ export const useChatStore = create((set, get) => ({
       }
       return channel;
     });
-    set({ channels: updatedChannels });
-    saveChannelsToSupabase(updatedChannels, state.sections);
+    try {
+      if (isSupabaseConfigured && supabase) {
+        for (const channel of updatedChannels.filter(item => item.section === sectionName)) {
+          const { error } = await supabase
+            .from(TABLES.channels)
+            .update({ order: channel.order })
+            .eq('id', channel.id)
+            .select('id')
+            .single();
+          if (error) throw new Error(`Failed to reorder channel "${channel.name}": ${error.message}`);
+        }
+      }
+      set({ channels: updatedChannels });
+      saveChatDataToLocalStorage(updatedChannels, state.messages, state.sections);
+      return true;
+    } catch (error) {
+      console.error(error);
+      return false;
+    }
   },
 
   // Select a channel
@@ -489,171 +376,40 @@ export const useChatStore = create((set, get) => ({
   // Get channels user has access to
   getUserChannels: (userId, userRole) => {
     const state = get();
-    if (!userId) {
+    const identityValues = (Array.isArray(userId) ? userId : [userId])
+      .filter(value => value !== null && value !== undefined && String(value).trim() !== '')
+      .map(value => String(value).trim().toLocaleLowerCase());
+    const identitySet = new Set(identityValues);
+
+    if (identitySet.size === 0) {
       console.log('getUserChannels: No userId provided');
       return [];
     }
-    
-    // Normalize userRole to lowercase for comparison
-    const normalizedRole = userRole?.toLowerCase();
-    
-    // Admin and Manager always see all channels (for management)
-    // Check multiple possible admin role values (case-insensitive)
-    const isAdminOrManager = normalizedRole === 'admin' || 
-                             normalizedRole === 'administrator' || 
-                             normalizedRole === 'manager';
-    
+
+    const normalizedRoles = (Array.isArray(userRole) ? userRole : [userRole])
+      .filter(Boolean)
+      .map(role => String(role).trim().toLocaleLowerCase());
+    const isAdminOrManager = normalizedRoles.some(role =>
+      role === 'admin' || role === 'administrator' || role === 'manager'
+    );
+
     if (isAdminOrManager) {
-      console.log('User is admin/manager - returning all', state.channels.length, 'channels');
       return state.channels;
     }
-    
-    // Create all possible ID formats for the current user
-    // This handles cases where user might be identified by id, username, user_id, or name
-    const userIdVariants = [
-      String(userId).trim(),
-      String(userId).trim().toLowerCase(),
-      String(userId).trim().toUpperCase(),
-    ];
-    
-    // Also try numeric conversion if applicable
-    const userIdNum = Number(userId);
-    if (!isNaN(userIdNum)) {
-      userIdVariants.push(userIdNum);
-      userIdVariants.push(String(userIdNum));
-    }
-    
-    // Remove duplicates
-    const uniqueVariants = [...new Set(userIdVariants.map(v => String(v).trim().toLowerCase()))];
-    
-    console.log('getUserChannels - User ID variants:', {
-      originalUserId: userId,
-      userIdType: typeof userId,
-      variants: uniqueVariants
-    });
-    
-    // For other users: Check channel access
-    // ALL channels (text and voice) are now private by default
-    // A channel is accessible ONLY if:
-    // 1. The channel has users explicitly added
-    // 2. The user's ID (or username) is in the users array
-    const filteredChannels = state.channels.filter(ch => {
-      // If no users are specified, channel is private (not visible to anyone except admins)
-      if (!ch.users || ch.users.length === 0) {
-        return false; // Private channel - not visible without explicit users
-      }
-      
-      // Check if user ID matches (handle string/number conversion and case-insensitive)
-      const isIncluded = ch.users.some(chUserId => {
-        if (!chUserId) return false;
-        
-        // Create all possible formats for the channel user ID
-        const chUserIdVariants = [
-          String(chUserId).trim(),
-          String(chUserId).trim().toLowerCase(),
-          String(chUserId).trim().toUpperCase(),
-        ];
-        
-        // Try numeric conversion
-        const chUserIdNum = Number(chUserId);
-        if (!isNaN(chUserIdNum)) {
-          chUserIdVariants.push(chUserIdNum);
-          chUserIdVariants.push(String(chUserIdNum));
-        }
-        
-        // Normalize all variants
-        const chUserIdNormalized = chUserIdVariants.map(v => String(v).trim().toLowerCase());
-        
-        // Check if any variant matches
-        for (const userVariant of uniqueVariants) {
-          for (const chVariant of chUserIdNormalized) {
-            if (userVariant === chVariant) {
-              return true;
-            }
-          }
-        }
-        
-        // Also try direct numeric comparison
-        if (!isNaN(userIdNum) && !isNaN(chUserIdNum) && userIdNum === chUserIdNum) {
-          return true;
-        }
-        
-        return false;
-      });
-      
-      return isIncluded;
-    });
-    
-    // Detailed logging for debugging
-    const normalizedUserIdForLog = String(userId).trim().toLowerCase();
-    const channelAccessDetails = state.channels.map(ch => {
-      const hasAccess = filteredChannels.some(fc => fc.id === ch.id);
-      const channelUserIds = (ch.users || []).map(u => String(u).trim().toLowerCase());
-      
-      // Check if any variant matches
-      let userMatches = false;
-      for (const userVariant of uniqueVariants) {
-        for (const chUserId of channelUserIds) {
-          if (userVariant === chUserId) {
-            userMatches = true;
-            break;
-          }
-        }
-        if (userMatches) break;
-      }
-      
-      // Also check numeric match
-      if (!userMatches && !isNaN(userIdNum)) {
-        userMatches = channelUserIds.some(cuId => {
-          const cuIdNum = Number(cuId);
-          return !isNaN(cuIdNum) && cuIdNum === userIdNum;
-        });
-      }
-      
-      return {
-        id: ch.id,
-        name: ch.name,
-        type: ch.type,
-        users: ch.users,
-        normalizedUsers: channelUserIds,
-        userMatches,
-        hasAccess,
-        reason: !ch.users || ch.users.length === 0 ? 'no users' : (userMatches ? 'matched' : 'not matched')
-      };
-    });
-    
-    // Log which channels have users and what those users are
-    const channelsWithUsers = state.channels
-      .filter(ch => ch.users && ch.users.length > 0)
-      .map(ch => ({
-        id: ch.id,
-        name: ch.name,
-        users: ch.users,
-        normalizedUsers: (ch.users || []).map(u => String(u).trim().toLowerCase())
-      }));
-    
-    console.log('getUserChannels - Detailed access check:', {
-      userId,
-      normalizedUserId: normalizedUserIdForLog,
-      userIdVariants: uniqueVariants,
-      userRole,
-      totalChannels: state.channels.length,
-      accessibleChannels: filteredChannels.length,
-      voiceChannels: filteredChannels.filter(ch => ch.type === 'voice').length,
-      textChannels: filteredChannels.filter(ch => ch.type !== 'voice').length,
-      channelsWithUsers,
-      channelAccessDetails: channelAccessDetails.filter(ch => ch.users && ch.users.length > 0)
-    });
-    
-    return filteredChannels;
+
+    return state.channels.filter(channel =>
+      Array.isArray(channel.users) && channel.users.some(memberId =>
+        identitySet.has(String(memberId).trim().toLocaleLowerCase())
+      )
+    );
   },
 
   // Create a new channel
-  createChannel: (channelData) => {
+  createChannel: async (channelData) => {
     const state = get();
     const sectionChannels = state.channels.filter(ch => ch.section === channelData.section);
     const newChannel = {
-      id: `channel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: crypto.randomUUID(),
       name: channelData.name,
       section: channelData.section,
       description: channelData.description || '',
@@ -665,25 +421,88 @@ export const useChatStore = create((set, get) => ({
       createdBy: channelData.createdBy || null,
       createdAt: new Date().toISOString(),
     };
-    const updatedChannels = [...state.channels, newChannel];
-    set({ channels: updatedChannels });
-    saveChannelsToSupabase(updatedChannels, state.sections);
-    return newChannel;
+    try {
+      let persistedChannel = newChannel;
+      if (isSupabaseConfigured && supabase) {
+        const { data, error } = await supabase
+          .from(TABLES.channels)
+          .insert(toChannelRow(newChannel))
+          .select('*')
+          .single();
+        const insertedChannel = requireData(data, error, 'Failed to create channel');
+        const memberIds = normalizeUserIds(newChannel.users);
+        if (memberIds.length > 0) {
+          const { error: membershipError } = await supabase.rpc('set_chat_channel_members', {
+            requested_channel_id: insertedChannel.id,
+            requested_user_ids: memberIds,
+          });
+          if (membershipError) throw new Error(`Failed to assign channel users: ${membershipError.message}`);
+        }
+        persistedChannel = normalizeChannels([{ ...insertedChannel, users: memberIds }])[0];
+      }
+      const currentChannels = get().channels;
+      const updatedChannels = currentChannels.some(channel => channel.id === persistedChannel.id)
+        ? currentChannels.map(channel => channel.id === persistedChannel.id ? persistedChannel : channel)
+        : [...currentChannels, persistedChannel];
+      set({ channels: updatedChannels });
+      saveChatDataToLocalStorage(updatedChannels, state.messages, state.sections);
+      return persistedChannel;
+    } catch (error) {
+      console.error(error);
+      return null;
+    }
   },
 
   // Update channel
-  updateChannel: (channelId, updates) => {
+  updateChannel: async (channelId, updates) => {
     const state = get();
-    const updatedChannels = state.channels.map(ch =>
-      ch.id === channelId ? { ...ch, ...updates } : ch
-    );
-    set({ channels: updatedChannels });
-    saveChannelsToSupabase(updatedChannels, state.sections);
+    const existingChannel = state.channels.find(channel => channel.id === channelId);
+    if (!existingChannel) return false;
+    const nextChannel = { ...existingChannel, ...updates, id: existingChannel.id, type: 'text' };
+
+    try {
+      let persistedChannel = nextChannel;
+      if (isSupabaseConfigured && supabase) {
+        const row = toChannelRow(nextChannel);
+        delete row.id;
+        const { data, error } = await supabase
+          .from(TABLES.channels)
+          .update(row)
+          .eq('id', channelId)
+          .select('*')
+          .single();
+        persistedChannel = normalizeChannels([{
+          ...requireData(data, error, 'Failed to update channel'),
+          users: nextChannel.users,
+        }])[0];
+      }
+      const updatedChannels = get().channels.map(channel =>
+        channel.id === channelId ? persistedChannel : channel
+      );
+      set({ channels: updatedChannels });
+      saveChatDataToLocalStorage(updatedChannels, state.messages, state.sections);
+      return true;
+    } catch (error) {
+      console.error(error);
+      return false;
+    }
   },
 
   // Delete channel
-  deleteChannel: (channelId) => {
+  deleteChannel: async (channelId) => {
     const state = get();
+    if (!state.channels.some(channel => channel.id === channelId)) return false;
+
+    try {
+      if (isSupabaseConfigured && supabase) {
+        const { data, error } = await supabase
+          .from(TABLES.channels)
+          .delete()
+          .eq('id', channelId)
+          .select('id')
+          .single();
+        requireData(data, error, 'Failed to delete channel');
+      }
     const updatedChannels = state.channels.filter(ch => ch.id !== channelId);
     const updatedMessages = { ...state.messages };
     delete updatedMessages[channelId];
@@ -694,19 +513,11 @@ export const useChatStore = create((set, get) => ({
     }
     
     set({ channels: updatedChannels, messages: updatedMessages });
-    saveChannelsToSupabase(updatedChannels, state.sections);
-    
-    // Also delete from Supabase
-    if (isSupabaseConfigured && supabase) {
-      supabase
-        .from(TABLES.channels)
-        .delete()
-        .eq('id', channelId)
-        .then(({ error }) => {
-          if (error) {
-            console.error('Error deleting channel from Supabase:', error);
-          }
-        });
+      saveChatDataToLocalStorage(updatedChannels, updatedMessages, state.sections);
+      return true;
+    } catch (error) {
+      console.error(error);
+      return false;
     }
   },
 
@@ -723,18 +534,13 @@ export const useChatStore = create((set, get) => ({
   },
 
   // Update channel users
-  updateChannelUsers: (channelId, userIds) => {
+  updateChannelUsers: async (channelId, userIds) => {
     const state = get();
     
     // Normalize user IDs to ensure consistency (remove nulls, empty strings, normalize)
-    const normalizedUserIds = (userIds || [])
-      .filter(id => id != null && id !== '') // Remove nulls and empty strings
-      .map(id => {
-        // Keep original format but ensure it's a valid value
-        const strId = String(id).trim();
-        return strId || null;
-      })
-      .filter(id => id != null); // Remove any remaining nulls
+    const normalizedUserIds = [...new Set(
+      (userIds || []).map(id => String(id).trim()).filter(Boolean)
+    )];
     
     console.log('updateChannelUsers:', {
       channelId,
@@ -743,17 +549,28 @@ export const useChatStore = create((set, get) => ({
       channelName: state.channels.find(ch => ch.id === channelId)?.name
     });
     
-    const updatedChannels = state.channels.map(ch =>
-      ch.id === channelId ? { ...ch, users: normalizedUserIds } : ch
-    );
-    set({ channels: updatedChannels });
-    saveChannelsToSupabase(updatedChannels, state.sections);
-    
-    console.log('Channel users updated. Channel will now be visible to:', normalizedUserIds);
+    try {
+      if (isSupabaseConfigured && supabase) {
+        const { error } = await supabase.rpc('set_chat_channel_members', {
+          requested_channel_id: channelId,
+          requested_user_ids: normalizedUserIds,
+        });
+        if (error) throw new Error(`Failed to update channel users: ${error.message}`);
+      }
+      const updatedChannels = state.channels.map(ch =>
+        ch.id === channelId ? { ...ch, users: normalizedUserIds } : ch
+      );
+      set({ channels: updatedChannels });
+      saveChatDataToLocalStorage(updatedChannels, state.messages, state.sections);
+      return true;
+    } catch (error) {
+      console.error(error);
+      return false;
+    }
   },
 
   // Add a new section
-  addSection: (name, emoji = '📁') => {
+  addSection: async (name, emoji = '📁') => {
     const state = get();
     
     // Check if section already exists
@@ -772,15 +589,32 @@ export const useChatStore = create((set, get) => ({
       order: state.sections.length,
     };
 
-    const updatedSections = [...state.sections, newSection];
-    set({ sections: updatedSections });
-    saveChannelsToSupabase(state.channels, updatedSections);
-    console.log('Added section:', newSection);
-    return true;
+    try {
+      let persistedSection = newSection;
+      if (isSupabaseConfigured && supabase) {
+        const { data, error } = await supabase
+          .from(TABLES.sections)
+          .insert(newSection)
+          .select('*')
+          .single();
+        persistedSection = requireData(data, error, 'Failed to create section');
+      }
+      const currentSections = get().sections;
+      const nextSections = currentSections.some(section => section.id === persistedSection.id || section.name === persistedSection.name)
+        ? currentSections.map(section => section.id === persistedSection.id || section.name === persistedSection.name ? persistedSection : section)
+        : [...currentSections, persistedSection];
+      set({ sections: nextSections });
+      saveChatDataToLocalStorage(state.channels, state.messages, nextSections);
+      console.log('Added section:', newSection);
+      return true;
+    } catch (error) {
+      console.error('Failed to add section:', error);
+      return false;
+    }
   },
 
   // Update a section
-  updateSection: (oldName, newName, newEmoji) => {
+  updateSection: async (oldName, newName, newEmoji) => {
     const state = get();
     
     // Check if new name already exists (and it's not the same section)
@@ -796,6 +630,7 @@ export const useChatStore = create((set, get) => ({
       const sName = typeof s === 'string' ? s : s.name;
       if (sName === oldName) {
         return {
+          ...(typeof s === 'object' ? s : {}),
           name: newName,
           emoji: newEmoji || (typeof s === 'object' ? s.emoji : '📁'),
           order: typeof s === 'object' ? s.order : 0,
@@ -809,39 +644,64 @@ export const useChatStore = create((set, get) => ({
       ch.section === oldName ? { ...ch, section: newName } : ch
     );
 
-    set({ sections: updatedSections, channels: updatedChannels });
-    saveChannelsToSupabase(updatedChannels, updatedSections);
-    console.log('Updated section:', oldName, '->', newName);
-    return true;
+    try {
+      if (isSupabaseConfigured && supabase) {
+        const { error } = await supabase.rpc('rename_chat_section', {
+          requested_old_name: oldName,
+          requested_new_name: newName,
+          requested_emoji: newEmoji || null,
+        });
+        if (error) throw new Error(`Failed to update section: ${error.message}`);
+      }
+      set({ sections: updatedSections, channels: updatedChannels });
+      saveChatDataToLocalStorage(updatedChannels, state.messages, updatedSections);
+      return true;
+    } catch (error) {
+      console.error(error);
+      return false;
+    }
   },
 
   // Delete a section
-  deleteSection: (sectionName, forceDeleteChannels = false) => {
+  deleteSection: async (sectionName) => {
     const state = get();
-    
-    // Check if any channels use this section
-    const channelsUsingSection = state.channels.filter(ch => ch.section === sectionName);
-    if (channelsUsingSection.length > 0 && !forceDeleteChannels) {
-      console.warn('Cannot delete section with channels:', sectionName);
-      return false;
-    }
-
-    // If force delete, remove all channels in this section first
     let updatedChannels = state.channels;
-    if (forceDeleteChannels && channelsUsingSection.length > 0) {
-      updatedChannels = state.channels.filter(ch => ch.section !== sectionName);
-      console.log(`Force deleting ${channelsUsingSection.length} channel(s) in section "${sectionName}"`);
-    }
 
     const updatedSections = state.sections.filter(s => {
       const sName = typeof s === 'string' ? s : s.name;
       return sName !== sectionName;
     });
 
-    set({ sections: updatedSections, channels: updatedChannels });
-    saveChannelsToSupabase(updatedChannels, updatedSections);
-    console.log('Deleted section:', sectionName);
-    return true;
+    try {
+      if (isSupabaseConfigured && supabase) {
+        const { count, error: countError } = await supabase
+          .from(TABLES.channels)
+          .select('id', { count: 'exact', head: true })
+          .eq('section_name', sectionName);
+        if (countError) throw new Error(`Failed to verify section contents: ${countError.message}`);
+        if ((count ?? 0) > 0) return false;
+
+        const existingSection = state.sections.find(section => section.name === sectionName);
+        const query = supabase.from(TABLES.sections).delete();
+        const { data, error } = existingSection?.id
+          ? await query.eq('id', existingSection.id).select('name').single()
+          : await query.eq('name', sectionName).select('name').single();
+        requireData(data, error, 'Failed to delete section');
+      } else {
+        const normalizedName = sectionName.trim().toLocaleLowerCase();
+        const containsChannels = state.channels.some(channel =>
+          String(channel.section || '').trim().toLocaleLowerCase() === normalizedName
+        );
+        if (containsChannels) return false;
+      }
+      updatedChannels = get().channels.filter(channel => channel.section !== sectionName);
+      set({ sections: updatedSections, channels: updatedChannels });
+      saveChatDataToLocalStorage(updatedChannels, state.messages, updatedSections);
+      return true;
+    } catch (error) {
+      console.error(error);
+      return false;
+    }
   },
 
   // Setup real-time subscription for channel changes
