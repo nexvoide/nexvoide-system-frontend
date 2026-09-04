@@ -43,6 +43,7 @@ export default function Chat({ onBack, unreadState }) {
 
   const userChannels = useMemo(() => channels.filter(channel => {
     if (hasManagementAccess) return true;
+    if (channel.serverAccessible === true) return true;
     return (channel.memberIds || []).some(memberId =>
       userIdentitySet.has(String(memberId).trim().toLocaleLowerCase())
     );

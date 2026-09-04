@@ -98,7 +98,9 @@ const loadChannelsFromSupabase = async () => {
     const { data: membershipData, error: membershipError } = await supabase
       .from('channel_members')
       .select('channel_id, user_id');
-    if (membershipError) throw membershipError;
+    if (membershipError) {
+      console.warn('Channel membership metadata unavailable; using RLS-authorized channels:', membershipError);
+    }
 
     // Load sections
     const { data: sectionsData, error: sectionsError } = await supabase
@@ -117,6 +119,7 @@ const loadChannelsFromSupabase = async () => {
     const channels = normalizeChannels((channelsData || []).map(ch => ({
       ...ch,
       memberIds: membersByChannel[ch.id] || [],
+      serverAccessible: true,
     })));
     // Only use default sections if Supabase has never been initialized (no sections table data)
     // If sections exist but are empty, respect that (user may have deleted all sections)
