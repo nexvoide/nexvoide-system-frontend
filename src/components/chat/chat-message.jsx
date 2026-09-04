@@ -84,7 +84,7 @@ export const ChatMessageItem = ({
 
   return (
     <motion.div
-      className={`flex mt-2 group ${isOwnMessage ? "justify-end" : "justify-start"} px-2`}
+      className={`flex group ${showHeader ? 'mt-5' : 'mt-1'} ${isOwnMessage ? "justify-end" : "justify-start"} px-1 sm:px-2`}
       initial={{ opacity: 0, y: 8 }}
       animate={isMentioned ? { 
         opacity: 1, 
@@ -105,7 +105,7 @@ export const ChatMessageItem = ({
       onMouseLeave={() => setIsHovered(false)}
     >
       {!isOwnMessage && (
-        <div className="flex-shrink-0 mr-3">
+        <div className={`flex-shrink-0 mr-3 ${showHeader ? '' : 'invisible'}`}>
           <Avatar
             src={message.user.avatar}
             name={message.user.name}
@@ -114,15 +114,15 @@ export const ChatMessageItem = ({
         </div>
       )}
       
-      <div className={cn("flex-1 max-w-[75%] flex flex-col", {
+      <div className={cn("flex-1 max-w-[86%] sm:max-w-[72%] flex flex-col", {
           "items-end": isOwnMessage,
         })}>
         {/* Header with name, role, and timestamp */}
         {showHeader && (
-          <div className={cn("flex items-center gap-2 mb-1", {
+          <div className={cn("flex items-center gap-2 mb-1.5 px-1", {
             "justify-end": isOwnMessage,
             })}>
-            <span className='font-medium text-white text-sm'>
+            <span className='font-medium text-slate-200 text-xs sm:text-sm'>
               {userInfo.name}
               {userInfo.role && ` - ${userInfo.role}`}
               {userInfo.id && ` ${userInfo.id}`}
@@ -161,12 +161,12 @@ export const ChatMessageItem = ({
         <div className="relative">
         <div
           className={cn(
-              "py-1.5 px-2.5 rounded-lg text-sm w-fit break-words relative group/message shadow-md transition-all duration-200",
+              "py-2.5 px-3.5 rounded-2xl text-sm w-fit break-words relative group/message shadow-lg transition-all duration-200 border",
             isOwnMessage
-              ? "bg-[#3b82f6] text-white"
+              ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white border-blue-400/20 rounded-br-md shadow-blue-950/20"
                 : isMentioned
-                ? "bg-slate-800 text-white border border-yellow-500/30"
-                : "bg-slate-800 text-white"
+                ? "bg-slate-800/90 text-white border-yellow-500/35 rounded-bl-md"
+                : "bg-slate-800/75 text-white border-white/[0.06] rounded-bl-md"
             )}>
             {/* Message content */}
             {message.content && (

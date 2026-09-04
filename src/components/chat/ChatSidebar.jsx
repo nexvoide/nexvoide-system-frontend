@@ -161,17 +161,19 @@ export default function ChatSidebar({
   };
 
   return (
-    <div className="w-64 h-full bg-[#0a0a1a] border-r border-slate-800/50 flex flex-col">
+    <div className="w-[280px] h-full bg-gradient-to-b from-[#0b0d20] to-[#070817] border-r border-white/[0.06] flex flex-col shadow-[12px_0_40px_rgba(0,0,0,0.14)]">
       {/* Header */}
-      <div className="p-4 border-b border-slate-800/50">
-        <h2 className="text-lg font-bold text-white flex items-center gap-2">
-          <Hash size={20} />
-          Channels
+      <div className="h-16 md:h-[72px] px-5 border-b border-white/[0.06] flex items-center">
+        <h2 className="text-base font-semibold tracking-tight text-white flex items-center gap-3">
+          <span className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-400/15 flex items-center justify-center">
+            <Hash size={18} className="text-blue-400" />
+          </span>
+          Conversations
         </h2>
       </div>
 
       {/* Channels List */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin">
+      <div className="flex-1 overflow-y-auto scrollbar-thin py-3 px-2">
         {sections.map((section) => {
           const sectionName = typeof section === 'string' ? section : section.name;
           const sectionEmoji = typeof section === 'object' ? section.emoji : null;
@@ -211,7 +213,7 @@ export default function ChatSidebar({
                 <div className="flex items-center">
                   <button
                     onClick={() => toggleSection(sectionName)}
-                    className={`flex-1 px-4 py-2 flex items-center gap-2 text-slate-400 hover:text-white hover:bg-slate-800/30 transition-colors ${
+                    className={`flex-1 px-3 py-2.5 flex items-center gap-2 text-slate-400 hover:text-white hover:bg-white/[0.035] rounded-xl transition-colors ${
                       isAdmin ? 'pl-6' : ''
                     }`}
                   >
@@ -290,11 +292,11 @@ export default function ChatSidebar({
                                 onSelectChannel(channel.id);
                               }
                             }}
-                            className={`w-full px-8 py-2 flex items-center gap-2 text-sm transition-all group relative ${
+                            className={`w-full px-3 py-2.5 flex items-center gap-2.5 text-sm transition-all group relative rounded-xl ${
                               selectedChannel === channel.id
-                                ? 'bg-[#3b82f6]/20 text-[#3b82f6] border-l-2 border-[#3b82f6]'
-                                : 'text-slate-400 hover:text-white hover:bg-slate-800/20'
-                            } ${isAdmin ? 'pl-10' : ''}`}
+                                ? 'bg-gradient-to-r from-blue-500/20 to-blue-500/[0.07] text-blue-300 ring-1 ring-blue-400/15 shadow-sm'
+                                : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.035]'
+                            } ${isAdmin ? 'pl-8' : ''}`}
                           >
                             <Hash size={14} className={selectedChannel === channel.id ? 'text-[#3b82f6]' : ''} />
                             <span className="flex-1 text-left truncate">{channel.name}</span>
@@ -364,17 +366,17 @@ export default function ChatSidebar({
 
       {/* Admin Actions (Admin Only) */}
       {isAdmin && (
-        <div className="p-4 border-t border-slate-800/50 space-y-2">
+        <div className="p-3 border-t border-white/[0.06] space-y-2 bg-black/10">
           <button
             onClick={onCreateSection}
-            className="w-full px-4 py-2 bg-slate-800/50 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center gap-2 transition-colors font-medium text-sm"
+            className="w-full px-4 py-2.5 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-slate-300 rounded-xl flex items-center gap-2 transition-colors font-medium text-sm"
           >
             <FolderPlus size={16} />
             Manage Sections
           </button>
           <button
             onClick={onCreateChannel}
-            className="w-full px-4 py-2 bg-[#3b82f6]/20 hover:bg-[#3b82f6]/30 text-[#3b82f6] rounded-lg flex items-center gap-2 transition-colors font-medium text-sm"
+            className="w-full px-4 py-2.5 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-400/15 text-blue-300 rounded-xl flex items-center gap-2 transition-colors font-medium text-sm"
           >
             <Plus size={16} />
             Create Channel

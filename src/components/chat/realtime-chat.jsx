@@ -9,7 +9,7 @@ import { motion } from "framer-motion";
 import { useAppStore } from "../../stores/appStore.js";
 import { playNotificationSound, shouldNotify } from "../../utils/chatUtils";
 import { supabase, TABLES } from "../../lib/supabase";
-import { Reply, X, Hash } from "lucide-react";
+import { Hash } from "lucide-react";
 
 /**
  * Enhanced realtime chat component with:
@@ -51,7 +51,7 @@ export const RealtimeChat = ({
   const { messages, sendMessage, isConnected, isLoading, markAsRead, updateMessage } = useEnhancedRealtimeChat({
     roomName,
     username: user?.name || "Anonymous",
-    userId: user?.id || user?.username || "anonymous",
+    userId: user?.id,
     userAvatar: user?.avatar || null,
     allUsers,
     employees,
@@ -72,7 +72,7 @@ export const RealtimeChat = ({
     if (roomName === selectedChannelId && messages.length > 0) {
       const latestMessages = messages.slice(-5); // Mark last 5 messages as read
       latestMessages.forEach(msg => {
-        if (msg.user?.id !== (user?.id || user?.username)) {
+        if (msg.user?.id !== user?.id) {
           markAsRead(msg.id);
         }
       });
@@ -97,7 +97,7 @@ export const RealtimeChat = ({
         // Only notify if:
         // 1. Message is not from current user
         // 2. Channel is not open OR tab is not focused
-        const isNotOwnMessage = newMsg.user?.id !== (user?.id || user?.username);
+        const isNotOwnMessage = newMsg.user?.id !== user?.id;
         const shouldPlaySound = shouldNotify(roomName, selectedChannelId, isTabFocused);
         
         if (isNotOwnMessage && shouldPlaySound) {
@@ -156,7 +156,7 @@ export const RealtimeChat = ({
         .from(TABLES.messages)
         .delete()
         .eq('id', message.id)
-        .eq('user_id', user?.id || user?.username);
+        .eq('author_id', user?.id);
       
       if (error) {
         console.error('Failed to delete message:', error);
@@ -174,7 +174,7 @@ export const RealtimeChat = ({
   }, []);
 
   return (
-    <div className='relative flex flex-col h-full w-full antialiased'>
+    <div className='relative flex flex-col flex-1 min-h-0 w-full antialiased'>
       {/* Connection Status Indicator */}
       {!isConnected && (
         <motion.div 
@@ -190,8 +190,7 @@ export const RealtimeChat = ({
       {/* Messages */}
       <div
         ref={containerRef}
-        className='absolute w-full overflow-y-auto py-6'
-        style={{ height: "calc(100% - 80px)" }}>
+        className='flex-1 min-h-0 w-full overflow-y-auto px-2 sm:px-4 md:px-6 py-6 scrollbar-thin'>
         {isLoading && messages.length === 0 ? (
           <div className='text-center text-sm text-slate-400 py-12'>
             <div className="inline-flex items-center gap-2">
@@ -213,7 +212,7 @@ export const RealtimeChat = ({
             )}
           </div>
         ) : (
-          <div className='space-y-4'>
+          <div className='max-w-5xl mx-auto space-y-1'>
             {messages.map((message, index) => {
               const prevMessage = index > 0 ? messages[index - 1] : null;
               const showHeader =
@@ -249,7 +248,7 @@ export const RealtimeChat = ({
                   )}
                   <ChatMessageItem
                     message={message}
-                    isOwnMessage={message.user?.id === (user?.id || user?.username)}
+                    isOwnMessage={message.user?.id === user?.id}
                     showHeader={showHeader}
                     replyToMessage={replyTo}
                     allUsers={allUsers}
@@ -264,30 +263,8 @@ export const RealtimeChat = ({
         )}
       </div>
 
-      {/* Reply-to indicator */}
-      {replyToMessage && (
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 10 }}
-          className='absolute bottom-[80px] left-0 right-0 px-4 py-2.5 bg-gradient-to-r from-slate-800/95 to-slate-800/90 backdrop-blur-sm border-t border-slate-700/50 flex items-center justify-between shadow-lg'>
-          <div className='flex items-center gap-2 text-sm'>
-            <Reply size={14} className="text-blue-400" />
-            <span className='text-slate-400'>Replying to</span>
-            <span className='font-semibold text-white'>{replyToMessage.user.name}</span>
-            <span className='text-slate-500 text-xs truncate max-w-[200px]'>{replyToMessage.content}</span>
-          </div>
-          <button
-            onClick={handleCancelReply}
-            className='p-1.5 hover:bg-slate-700/50 rounded-lg text-slate-400 hover:text-white transition-all duration-150'
-          >
-            <X size={14} />
-          </button>
-        </motion.div>
-      )}
-
-      {/* Fixed Input */}
-      <div className='absolute bottom-0 left-0 w-full px-4 py-3 border-t border-slate-800/50 bg-gradient-to-t from-slate-950 via-slate-950 to-transparent backdrop-blur-sm'>
+      <div className='w-full px-3 sm:px-5 md:px-6 py-3 md:py-4 border-t border-white/[0.06] bg-[#07091a]/90 backdrop-blur-xl'>
+      <div className='max-w-5xl mx-auto'>
       <MessageInput
         channelId={roomName}
         userId={user?.id}
@@ -300,6 +277,7 @@ export const RealtimeChat = ({
         onCancelReply={handleCancelReply}
         allUsers={allUsers}
       />
+      </div>
       </div>
     </div>
   );

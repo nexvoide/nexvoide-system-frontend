@@ -508,7 +508,7 @@ export default function MessageInput({
             : "This channel is read-only. Only admins can send messages."}
         </div>
       )}
-      <form onSubmit={handleSubmit} className='flex items-center gap-2'>
+      <form onSubmit={handleSubmit} className='flex items-end gap-2'>
         {/* Emoji Picker */}
         {showEmojis && (
           <motion.div
@@ -637,7 +637,7 @@ export default function MessageInput({
             }
             rows={1}
             disabled={isDisabled}
-            className={`w-full p-3.5 pr-24 bg-slate-800/60 border border-slate-700/60 rounded-xl text-white placeholder-slate-400/70 resize-none focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/50 focus:border-[#3b82f6]/50 transition-all duration-200 shadow-lg ${
+            className={`w-full py-3.5 pl-4 pr-24 bg-white/[0.045] border border-white/[0.09] rounded-2xl text-white placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400/40 transition-all duration-200 shadow-[0_8px_30px_rgba(0,0,0,0.16)] ${
               isDisabled ? "opacity-50 cursor-not-allowed" : "hover:border-slate-600"
             }`}
             style={{
