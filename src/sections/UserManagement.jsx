@@ -14,7 +14,7 @@ const generatePassword = (length = 12) => {
 };
 
 export default function UserManagement() {
-  const { user: currentUser } = useAppStore();
+  const { user: currentUser, employees } = useAppStore();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -35,6 +35,7 @@ export default function UserManagement() {
     user_id: "",
     active: true,
     avatar: "",
+    editorIds: [],
   });
 
   // Load users
@@ -87,12 +88,16 @@ export default function UserManagement() {
     }
   };
 
-  const handleOpen = (user = null) => {
+  const handleOpen = async (user = null) => {
     if (user) {
       setEditing(user);
       // Normalize role to array
       const roles = normalizeRoles(user.role, 'employee');
       
+      let editorIds = [];
+      if (normalizeRoles(user.role, '').includes(ROLES.CLIENT)) {
+        try { editorIds = (await db.dbCustomerEditorAssignments.getByCustomer(user.id)).map((row) => row.employee_id || row.employeeId); } catch (error) { console.error(error); }
+      }
       setForm({
         username: user.username || "",
         password: "", // Don't show existing password
@@ -103,6 +108,7 @@ export default function UserManagement() {
         user_id: user.user_id || "",
         active: user.active !== false,
         avatar: user.avatar || user.profile_picture || user.profilePicture || "",
+        editorIds,
       });
     } else {
       setEditing(null);
@@ -116,6 +122,7 @@ export default function UserManagement() {
         user_id: "",
         active: true,
         avatar: "",
+        editorIds: [],
       });
     }
     setOpen(true);
@@ -211,6 +218,9 @@ export default function UserManagement() {
           body: { action: 'set-user-password', user_id: targetUserId, password: form.password },
         });
         if (error || !data?.success) throw new Error('Unable to securely save the user password');
+      }
+      if (form.roles.includes(ROLES.CLIENT)) {
+        await db.dbCustomerEditorAssignments.setForCustomer(savedUser.id, form.editorIds || []);
       }
 
       await loadUsers();
@@ -648,6 +658,20 @@ export default function UserManagement() {
                         Social Media Management
                       </option>
                     </select>
+                  </div>
+                )}
+                {form.roles.includes(ROLES.CLIENT) && (
+                  <div className='rounded-xl border border-blue-500/20 bg-blue-500/5 p-3'>
+                    <label className='text-sm font-medium text-slate-200'>Assigned Editors</label>
+                    <p className='mb-2 text-xs text-slate-500'>This customer can select only these editors when submitting work.</p>
+                    <div className='grid gap-2 sm:grid-cols-2'>
+                      {employees.map((employee) => (
+                        <label key={employee.id} className='flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl bg-slate-800/50 px-3'>
+                          <input type='checkbox' checked={(form.editorIds || []).some((id) => String(id) === String(employee.id))} onChange={(event) => setForm({ ...form, editorIds: event.target.checked ? [...(form.editorIds || []), employee.id] : (form.editorIds || []).filter((id) => String(id) !== String(employee.id)) })}/>
+                          <span className='truncate text-sm text-slate-200'>{employee.name}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 )}
 

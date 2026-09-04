@@ -173,6 +173,7 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.VIEW_OWN_DASHBOARD,
     PERMISSIONS.VIEW_PROJECTS,
     PERMISSIONS.VIEW_OWN_PROJECTS,
+    PERMISSIONS.CREATE_PROJECTS,
     // No finance, team, setup, settings, or activity logs access
   ],
 };
@@ -331,4 +332,3 @@ export function getRoleBadgeProps(role) {
   };
   return colorMap[color] || colorMap.gray;
 }
-

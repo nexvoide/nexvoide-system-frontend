@@ -538,7 +538,8 @@ export function generateSalaryPDF(
   employee,
   projects,
   currency = "PKR",
-  rate = 280
+  rate = 280,
+  payMonth = null
 ) {
   const doc = new jsPDF("p", "pt", "a4");
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -566,10 +567,11 @@ export function generateSalaryPDF(
   };
 
   const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(
+  const currentMonth = payMonth || `${now.getFullYear()}-${String(
     now.getMonth() + 1
   ).padStart(2, "0")}`;
-  const monthName = now.toLocaleString("default", {
+  const periodDate = new Date(`${currentMonth}-01T12:00:00`);
+  const monthName = periodDate.toLocaleString("default", {
     month: "long",
     year: "numeric",
   });
@@ -585,7 +587,8 @@ export function generateSalaryPDF(
 
   // Filter projects in current month where employee is assigned
   const inMonth = (p) => {
-    const d = p.endDate || p.end_date || p.startDate || p.start_date;
+    if (String(p.status || '').trim().toLowerCase() !== 'completed') return false;
+    const d = p.completedAt || p.completed_at || p.updatedAt || p.updated_at;
     if (!d) return false;
     const dt = new Date(d);
     if (isNaN(dt)) return false;
@@ -630,6 +633,12 @@ export function generateSalaryPDF(
       "-";
     const projectName = p.projectName || p.project_name || "Unnamed Project";
     rows.push({ name: projectName, quantity, cost: empCost });
+  }
+  const fixedSalary = ['retainer', 'hybrid'].includes(employee.employeeType || employee.employee_type)
+    ? convertCurrency(employee.fixedSalaryPKR ?? employee.monthlySalary ?? employee.monthly_salary ?? 0, 'PKR')
+    : 0;
+  if (fixedSalary > 0) {
+    rows.unshift({ name: 'Fixed monthly salary', quantity: '1', cost: fixedSalary });
   }
 
   // Color variables (matching invoice)

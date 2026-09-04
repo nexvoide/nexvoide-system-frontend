@@ -24,6 +24,8 @@ import {
   useFilteredProjects,
 } from "../hooks/useRoleFilter.js";
 import { hasPermission, PERMISSIONS } from "../utils/permissions.js";
+import { dbEmployeeMonthlyServices } from "../lib/db.js";
+import DailyWorkLog from "../components/DailyWorkLog.jsx";
 
 export default function HR() {
   const {
@@ -41,6 +43,8 @@ export default function HR() {
   const employees = useFilteredEmployees(); // Use filtered employees based on role
   const projects = useFilteredProjects(); // Use filtered projects based on role
   const [refreshing, setRefreshing] = useState(false);
+  const [monthlyServices, setMonthlyServices] = useState([]);
+  const [completingServiceId, setCompletingServiceId] = useState(null);
 
   // Debug logging
   useEffect(() => {
@@ -63,6 +67,20 @@ export default function HR() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
+
+  const refreshMonthlyServices = async () => {
+    try {
+      const rows = await dbEmployeeMonthlyServices.getAll();
+      setMonthlyServices(Array.isArray(rows) ? rows : []);
+    } catch (error) {
+      console.error("Failed to load monthly service completions:", error);
+      setMonthlyServices([]);
+    }
+  };
+
+  useEffect(() => {
+    refreshMonthlyServices();
+  }, []);
 
   // Don't refresh on mount - data already loaded in initialize()
   // Only refresh if explicitly needed (e.g., after create/update)
@@ -102,6 +120,8 @@ export default function HR() {
         revisions: 0,
         payout: 0,
         payoutPKR: 0,
+        projectPayout: 0,
+        projectPayoutPKR: 0,
         quantity: 0,
         revisionQuantity: 0,
         service: null,
@@ -157,6 +177,8 @@ export default function HR() {
           revisions: 0,
           payout: 0,
           payoutPKR: 0,
+          projectPayout: 0,
+          projectPayoutPKR: 0,
           quantity: 0,
           revisionQuantity: 0,
           service: null,
@@ -166,6 +188,8 @@ export default function HR() {
           revisions: prev.revisions + (isRevision ? 1 : 0),
           payout: prev.payout + costDisplay,
           payoutPKR: prev.payoutPKR + costPKR,
+          projectPayout: prev.projectPayout + costDisplay,
+          projectPayoutPKR: prev.projectPayoutPKR + costPKR,
           quantity: prev.quantity + (isRevision ? 0 : projectQuantity), // Only add to quantity if not a revision
           revisionQuantity:
             prev.revisionQuantity + (isRevision ? quantityToUse : 0), // Add revision quantity for revisions
@@ -183,6 +207,18 @@ export default function HR() {
       const empBankName = e.bankName || e.bank_name || "";
       const empBankAccount = e.bankAccount || e.bank_account || "";
       const empAvatar = e.avatar || e.employee_avatar || "";
+      const employeeType = e.employeeType || e.employee_type || "project_based";
+      const isRetainer = employeeType === "retainer" || employeeType === "hybrid";
+      const serviceCompletion = monthlyServices.find((service) =>
+        String(service.employee_id || service.employeeId) === String(e.id) &&
+        String(service.service_month || service.serviceMonth || '').slice(0, 7) === month
+      );
+      const fixedSalaryPKR = isRetainer && serviceCompletion
+        ? (Number(serviceCompletion.fixed_salary_pkr ?? serviceCompletion.fixedSalaryPKR ?? 0) || 0)
+        : 0;
+      const fixedSalary = convert(fixedSalaryPKR, "PKR", currency, rate);
+      const projectPayout = (map.get(empName) || { projectPayout: 0 }).projectPayout;
+      const projectPayoutPKR = (map.get(empName) || { projectPayoutPKR: 0 }).projectPayoutPKR;
 
       return {
         id: e.id,
@@ -200,8 +236,19 @@ export default function HR() {
         zip: e.zip || e.address_zip || "",
         projects: (map.get(empName) || { projects: 0 }).projects,
         revisions: (map.get(empName) || { revisions: 0 }).revisions,
-        payout: (map.get(empName) || { payout: 0 }).payout,
-        payoutPKR: (map.get(empName) || { payoutPKR: 0 }).payoutPKR,
+        employeeType,
+        monthlySalary: fixedSalaryPKR,
+        dutyHours: e.dutyHours || e.duty_hours || "",
+        assignedClient: e.assignedClient || e.assigned_client || "",
+        monthlyServiceCompleted: Boolean(serviceCompletion),
+        monthlyServiceCompletedAt: serviceCompletion?.completed_at || serviceCompletion?.completedAt || null,
+        configuredMonthlySalaryPKR: Number(e.monthlySalary ?? e.monthly_salary ?? 0) || 0,
+        fixedSalary,
+        fixedSalaryPKR,
+        projectPayout,
+        projectPayoutPKR,
+        payout: projectPayout + fixedSalary,
+        payoutPKR: projectPayoutPKR + fixedSalaryPKR,
         quantity: (map.get(empName) || { quantity: 0 }).quantity,
         revisionQuantity: (map.get(empName) || { revisionQuantity: 0 })
           .revisionQuantity,
@@ -213,7 +260,7 @@ export default function HR() {
       rows.sort((a, b) => b.projects - a.projects);
     else rows.sort((a, b) => b.payout - a.payout);
     return rows;
-  }, [safeEmployees, safeProjects, month, currency, rate, sortKey]);
+  }, [safeEmployees, safeProjects, monthlyServices, month, currency, rate, sortKey]);
 
   const displayed = useMemo(() => {
     const q = query.toLowerCase();
@@ -350,6 +397,13 @@ export default function HR() {
                     {r.role || "No role specified"}
                   </span>
                 </div>
+                <div className='mt-2 inline-flex rounded-lg bg-slate-700/40 px-2 py-1 text-[11px] text-slate-300'>
+                  {r.employeeType === "hybrid"
+                    ? "Permanent + Project-Based"
+                    : r.employeeType === "retainer"
+                      ? "Permanent / Retainer"
+                      : "Project-Based"}
+                </div>
               </div>
             </div>
 
@@ -370,6 +424,54 @@ export default function HR() {
                 }).format(r.payoutPKR)}
                 <span className='text-xs font-normal text-slate-500'>PKR</span>
               </div>
+              {(r.employeeType === "retainer" || r.employeeType === "hybrid") && (
+                <div className='mt-3 grid grid-cols-2 gap-2 border-t border-blue-500/20 pt-3 text-xs'>
+                  <div>
+                    <div className='text-slate-500'>Fixed salary</div>
+                    <div className='font-semibold text-slate-200'>{new Intl.NumberFormat("en").format(r.fixedSalaryPKR)} PKR</div>
+                  </div>
+                  <div>
+                    <div className='text-slate-500'>Project earnings</div>
+                    <div className='font-semibold text-slate-200'>{new Intl.NumberFormat("en").format(r.projectPayoutPKR)} PKR</div>
+                  </div>
+                </div>
+              )}
+              {(r.employeeType === "retainer" || r.employeeType === "hybrid") && (
+                <div className='mt-3'>
+                  {r.monthlyServiceCompleted ? (
+                    <div className='flex min-h-[40px] items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-400'>
+                      Monthly service completed
+                    </div>
+                  ) : canAddEmployees ? (
+                    <button
+                      type='button'
+                      disabled={completingServiceId === r.id}
+                      className='btn btn-primary w-full min-h-[44px] text-sm disabled:opacity-60'
+                      onClick={async () => {
+                        if (!confirm(`Complete ${month} monthly service for ${r.name}? This will add ${new Intl.NumberFormat("en").format(r.configuredMonthlySalaryPKR)} PKR to the payout.`)) return;
+                        setCompletingServiceId(r.id);
+                        try {
+                          await dbEmployeeMonthlyServices.complete({
+                            employeeId: r.id,
+                            serviceMonth: month,
+                            fixedSalaryPKR: r.configuredMonthlySalaryPKR,
+                            completedBy: user?.userId || user?.user_id || user?.name || null,
+                          });
+                          await refreshMonthlyServices();
+                        } catch (error) {
+                          console.error("Failed to complete monthly service:", error);
+                          alert(error.message || "Failed to complete monthly service.");
+                        } finally {
+                          setCompletingServiceId(null);
+                        }
+                      }}>
+                      {completingServiceId === r.id ? "Completing…" : "Complete Monthly Service"}
+                    </button>
+                  ) : (
+                    <div className='text-center text-xs text-slate-500'>Monthly service pending</div>
+                  )}
+                </div>
+              )}
               {r.payoutPKR > 0 && (
                 <div className='flex items-center gap-1 mt-2 text-xs text-slate-500'>
                   <TrendingUp size={12} className='text-green-500' />
@@ -543,12 +645,12 @@ export default function HR() {
 
             {/* Action Buttons */}
             <div className='mt-5 pt-4 border-t border-slate-200/30 dark:border-slate-700/30 flex justify-between items-center'>
-              <button
+              <div className='flex flex-wrap gap-2'><button
                 className='glass px-3 py-1.5 rounded-lg text-xs inline-flex items-center gap-1 text-slate-700 dark:text-slate-300 hover:bg-green-500/15 hover:text-green-400 transition-colors'
                 onClick={() => {
                   try {
                     // Always use PKR for salary PDFs
-                    generateSalaryPDF(r, safeProjects, "PKR", rate);
+                    generateSalaryPDF(r, safeProjects, "PKR", rate, month);
                   } catch (e) {
                     console.error("Failed to generate salary PDF:", e);
                     alert("Failed to generate PDF.");
@@ -557,6 +659,7 @@ export default function HR() {
                 <Download size={14} />
                 Salary PDF
               </button>
+              {(r.employeeType === "retainer" || r.employeeType === "hybrid") && <DailyWorkLog employee={r} currentUser={user}/>}</div>
               {(hasPermission(userRole, PERMISSIONS.EDIT_TEAM_MEMBERS) || hasPermission(userRole, PERMISSIONS.DELETE_TEAM_MEMBERS)) && (
               <div className='flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity'>
                   {hasPermission(userRole, PERMISSIONS.EDIT_TEAM_MEMBERS) && (
@@ -665,6 +768,10 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
         zip: "",
         avatar: "",
         notes: "",
+        employeeType: "project_based",
+        monthlySalary: "",
+        dutyHours: "",
+        assignedClient: "",
       }
   );
   
@@ -713,6 +820,10 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
       bankName: form.bankName || "",
       bankAccount: form.bankAccount || "",
       avatar: form.avatar || "",
+      employeeType: form.employeeType || form.employee_type || "project_based",
+      monthlySalary: ["retainer", "hybrid"].includes(form.employeeType || form.employee_type) ? Math.max(0, Number(form.monthlySalary ?? form.monthly_salary) || 0) : 0,
+      dutyHours: ["retainer", "hybrid"].includes(form.employeeType || form.employee_type) ? (form.dutyHours || form.duty_hours || "") : "",
+      assignedClient: ["retainer", "hybrid"].includes(form.employeeType || form.employee_type) ? (form.assignedClient || form.assigned_client || "") : "",
     };
     console.log("📦 EmployeeDrawer: Calling onSave with payload:", payload);
     onSave(payload);
@@ -784,6 +895,51 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
               onChange={(e) => set("role", e.target.value)}
             />
           </div>
+          <div>
+            <label className='text-xs text-slate-500'>Employee Type</label>
+            <select
+              className='glass w-full px-3 py-2 rounded-xl min-h-[44px]'
+              value={form.employeeType || form.employee_type || "project_based"}
+              onChange={(e) => set("employeeType", e.target.value)}>
+              <option value='project_based'>Project-Based Employee</option>
+              <option value='retainer'>Permanent / Retainer Employee</option>
+              <option value='hybrid'>Permanent + Project-Based Employee</option>
+            </select>
+          </div>
+          {["retainer", "hybrid"].includes(form.employeeType || form.employee_type) && (
+            <div className='grid gap-3 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3'>
+              <div>
+                <label className='text-xs text-slate-500'>Fixed Monthly Salary (PKR)</label>
+                <input
+                  className='glass w-full px-3 py-2 rounded-xl'
+                  type='number'
+                  min='0'
+                  step='1'
+                  required
+                  value={form.monthlySalary ?? form.monthly_salary ?? ""}
+                  onChange={(e) => set("monthlySalary", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className='text-xs text-slate-500'>Working Hours / Duty Time</label>
+                <input
+                  className='glass w-full px-3 py-2 rounded-xl'
+                  value={form.dutyHours || form.duty_hours || ""}
+                  onChange={(e) => set("dutyHours", e.target.value)}
+                  placeholder='e.g. 9:00 AM – 6:00 PM'
+                />
+              </div>
+              <div>
+                <label className='text-xs text-slate-500'>Assigned Customer / Client</label>
+                <input
+                  className='glass w-full px-3 py-2 rounded-xl'
+                  value={form.assignedClient || form.assigned_client || ""}
+                  onChange={(e) => set("assignedClient", e.target.value)}
+                  placeholder='Client or company name'
+                />
+              </div>
+            </div>
+          )}
           <div className='grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3'>
             <div>
               <label className='text-xs text-slate-500'>Email</label>

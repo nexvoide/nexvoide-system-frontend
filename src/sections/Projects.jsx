@@ -7,6 +7,7 @@ import ProjectCard from "../widgets/ProjectCard.jsx";
 import { useFilteredProjects, useCanCreateProjects, useCanEditProjects, useCanDeleteProjects, useCanViewFinanceDetails } from "../hooks/useRoleFilter.js";
 import { ROLES, normalizeRoles, hasRole } from "../utils/permissions.js";
 import ProjectActions from "../components/ProjectActions.jsx";
+import CustomerProjectForm from "../widgets/CustomerProjectForm.jsx";
 
 export default function Projects() {
   const { currency, rate, loading, user, deleteProject } = useAppStore();
@@ -31,6 +32,7 @@ export default function Projects() {
   }, []);
 
   const effectiveMode = isMobile ? 'cards' : mode;
+  const isClient = hasRole(normalizeRoles(user?.role, ''), ROLES.CLIENT);
 
   const handleDelete = async project => {
     try {
@@ -163,7 +165,9 @@ export default function Projects() {
             </button>
           </div>
           {canCreate && (
-            <ProjectForm triggerLabel="New Project" editing={editing} onDone={()=>setEditing(null)} />
+            isClient
+              ? <CustomerProjectForm onDone={()=>setEditing(null)} />
+              : <ProjectForm triggerLabel="New Project" editing={editing} onDone={()=>setEditing(null)} />
           )}
         </div>
       </div>

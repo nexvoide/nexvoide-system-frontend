@@ -163,6 +163,8 @@ export const dbProjects = {
         completed_at: project.completed_at || null,
         assigned: assignedValue,
         raw_source_link: project.raw_source_link || project.rawSourceLink || null,
+        footage_link: project.footage_link || project.footageLink || null,
+        priority: project.priority || 'normal',
         attachments: attachmentsValue,
         // notes is added below in a way that tolerates missing DB column
       };
@@ -259,6 +261,8 @@ export const dbProjects = {
       if (updates.start_date !== undefined) projectData.start_date = updates.start_date;
       if (updates.end_date !== undefined) projectData.end_date = updates.end_date;
       if (updates.deadline !== undefined) projectData.deadline = updates.deadline;
+      if (updates.priority !== undefined) projectData.priority = updates.priority || 'normal';
+      if (updates.footage_link !== undefined) projectData.footage_link = updates.footage_link || null;
       if (updates.paid_at !== undefined) projectData.paid_at = updates.paid_at;
       if (updates.completed_at !== undefined) projectData.completed_at = updates.completed_at;
       if (updates.notes !== undefined) projectData.notes = updates.notes || null;
@@ -380,7 +384,7 @@ export const dbEmployees = {
       
       const queryPromise = supabase
         .from(TABLES.employees)
-        .select('id, name, role, email, phone, bank_name, bank_account, avatar, notes, active, rate_type, rate_value, street, city, state, country, zip, created_at, updated_at')
+        .select('id, name, role, email, phone, bank_name, bank_account, avatar, notes, active, rate_type, rate_value, employee_type, monthly_salary, duty_hours, assigned_client, street, city, state, country, zip, created_at, updated_at')
         .order('created_at', { ascending: false });
       
       const result = await Promise.race([queryPromise, timeoutPromise]);
@@ -429,6 +433,10 @@ export const dbEmployees = {
         active: employee.active !== undefined ? employee.active : true,
         rate_type: employee.rateType || employee.rate_type || 'fixed',
         rate_value: employee.rateValue !== undefined ? Number(employee.rateValue) || 0 : (employee.rate_value !== undefined ? Number(employee.rate_value) || 0 : 0),
+        employee_type: employee.employeeType || employee.employee_type || 'project_based',
+        monthly_salary: Number(employee.monthlySalary ?? employee.monthly_salary ?? 0) || 0,
+        duty_hours: employee.dutyHours || employee.duty_hours || null,
+        assigned_client: employee.assignedClient || employee.assigned_client || null,
       };
       
       // Add address fields if they exist (they may not be in the schema yet)
@@ -532,6 +540,10 @@ export const dbEmployees = {
       if (updates.active !== undefined) updateData.active = updates.active;
       if (updates.rateType !== undefined || updates.rate_type !== undefined) updateData.rate_type = updates.rateType || updates.rate_type || 'fixed';
       if (updates.rateValue !== undefined || updates.rate_value !== undefined) updateData.rate_value = Number(updates.rateValue || updates.rate_value || 0);
+      if (updates.employeeType !== undefined || updates.employee_type !== undefined) updateData.employee_type = updates.employeeType || updates.employee_type || 'project_based';
+      if (updates.monthlySalary !== undefined || updates.monthly_salary !== undefined) updateData.monthly_salary = Number(updates.monthlySalary ?? updates.monthly_salary ?? 0) || 0;
+      if (updates.dutyHours !== undefined || updates.duty_hours !== undefined) updateData.duty_hours = updates.dutyHours || updates.duty_hours || null;
+      if (updates.assignedClient !== undefined || updates.assigned_client !== undefined) updateData.assigned_client = updates.assignedClient || updates.assigned_client || null;
       
       // Try update with address fields first
       const street = updates.street || updates.address_street;
@@ -646,6 +658,120 @@ export const dbEmployees = {
       console.error('Error in delete employee:', error);
       throw error;
     }
+  },
+};
+
+// Employee monthly retainer service completions
+export const dbEmployeeMonthlyServices = {
+  async getAll() {
+    if (!isSupabaseConfigured) {
+      return localStorageGet('employee_monthly_services');
+    }
+    const { data, error } = await supabase
+      .from('employee_monthly_services')
+      .select('*')
+      .order('service_month', { ascending: false });
+    if (error) throw error;
+    const rows = Array.isArray(data) ? data : [];
+    localStorageSet('employee_monthly_services', rows);
+    return rows;
+  },
+
+  async complete({ employeeId, serviceMonth, fixedSalaryPKR, completedBy }) {
+    if (!employeeId || !/^\d{4}-\d{2}$/.test(serviceMonth)) {
+      throw new Error('A valid employee and service month are required.');
+    }
+    const row = {
+      id: crypto.randomUUID(),
+      employee_id: employeeId,
+      service_month: `${serviceMonth}-01`,
+      fixed_salary_pkr: Math.max(0, Number(fixedSalaryPKR) || 0),
+      completed_by: completedBy || null,
+      completed_at: new Date().toISOString(),
+    };
+
+    if (!isSupabaseConfigured) {
+      const rows = localStorageGet('employee_monthly_services');
+      const existing = rows.find((item) =>
+        String(item.employee_id) === String(employeeId) &&
+        String(item.service_month).slice(0, 7) === serviceMonth
+      );
+      if (existing) return existing;
+      rows.unshift(row);
+      localStorageSet('employee_monthly_services', rows);
+      return row;
+    }
+
+    const { data, error } = await supabase
+      .from('employee_monthly_services')
+      .insert(row)
+      .select()
+      .single();
+    if (error?.code === '23505') {
+      const { data: existing, error: lookupError } = await supabase
+        .from('employee_monthly_services')
+        .select('*')
+        .eq('employee_id', employeeId)
+        .eq('service_month', `${serviceMonth}-01`)
+        .single();
+      if (lookupError) throw lookupError;
+      return existing;
+    }
+    if (error) throw error;
+    return data;
+  },
+};
+
+export const dbCustomerEditorAssignments = {
+  async getByCustomer(customerUserId) {
+    if (!customerUserId) return [];
+    if (!isSupabaseConfigured) return localStorageGet('customer_editor_assignments').filter((row) => String(row.customer_user_id) === String(customerUserId));
+    const { data, error } = await supabase.from('customer_editor_assignments').select('*').eq('customer_user_id', customerUserId);
+    if (error) throw error;
+    return data || [];
+  },
+  async setForCustomer(customerUserId, employeeIds) {
+    if (!customerUserId) throw new Error('Customer is required.');
+    const ids = [...new Set((employeeIds || []).filter(Boolean))];
+    if (!isSupabaseConfigured) {
+      const other = localStorageGet('customer_editor_assignments').filter((row) => String(row.customer_user_id) !== String(customerUserId));
+      localStorageSet('customer_editor_assignments', [...other, ...ids.map((employeeId) => ({ id: crypto.randomUUID(), customer_user_id: customerUserId, employee_id: employeeId }))]);
+      return;
+    }
+    const { error: deleteError } = await supabase.from('customer_editor_assignments').delete().eq('customer_user_id', customerUserId);
+    if (deleteError) throw deleteError;
+    if (!ids.length) return;
+    const { error } = await supabase.from('customer_editor_assignments').insert(ids.map((employeeId) => ({ customer_user_id: customerUserId, employee_id: employeeId })));
+    if (error) throw error;
+  },
+};
+
+export const dbDailyWorkLogs = {
+  async getByEmployeeAndDate(employeeId, workDate) {
+    if (!employeeId || !workDate) return [];
+    if (!isSupabaseConfigured) return localStorageGet('employee_daily_work_logs').filter((row) => String(row.employee_id) === String(employeeId) && row.work_date === workDate);
+    const { data, error } = await supabase.from('employee_daily_work_logs').select('*').eq('employee_id', employeeId).eq('work_date', workDate).order('created_at');
+    if (error) throw error;
+    return data || [];
+  },
+  async create(entry) {
+    const minutes = Number(entry.minutesSpent);
+    if (!entry.employeeId || !entry.workDate || !entry.projectTask?.trim() || !entry.activity?.trim() || !Number.isInteger(minutes) || minutes < 1 || minutes > 1440) throw new Error('Complete all required work-log fields with a valid time.');
+    const row = { id: crypto.randomUUID(), employee_id: entry.employeeId, work_date: entry.workDate, project_task: entry.projectTask.trim(), activity: entry.activity.trim(), minutes_spent: minutes, notes: entry.notes?.trim() || null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    if (!isSupabaseConfigured) { const rows = localStorageGet('employee_daily_work_logs'); rows.push(row); localStorageSet('employee_daily_work_logs', rows); return row; }
+    const { data, error } = await supabase.from('employee_daily_work_logs').insert(row).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async getByEmployeeAndMonth(employeeId, month) {
+    if (!employeeId || !/^\d{4}-\d{2}$/.test(month)) return [];
+    const start = `${month}-01`;
+    const [year, monthNumber] = month.split('-').map(Number);
+    const end = new Date(year, monthNumber, 0).toLocaleDateString('en-CA');
+    if (!isSupabaseConfigured) return localStorageGet('employee_daily_work_logs').filter((row) => String(row.employee_id) === String(employeeId) && row.work_date >= start && row.work_date <= end).sort((a, b) => a.work_date.localeCompare(b.work_date));
+    const { data, error } = await supabase.from('employee_daily_work_logs').select('*').eq('employee_id', employeeId).gte('work_date', start).lte('work_date', end).order('work_date').order('created_at');
+    if (error) throw error;
+    return data || [];
   },
 };
 
