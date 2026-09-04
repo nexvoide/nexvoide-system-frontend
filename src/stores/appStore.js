@@ -213,13 +213,14 @@ export const useAppStore = create((set, get) => ({
   async addProject(p) {
     try {
       const now = new Date().toISOString();
-      const data = toSnake({
+      const projectData = {
         ...p,
         paidAt: p.paidAt || now,
-        completedAt: String(p.status || '').trim().toLowerCase() === 'completed'
-          ? (p.completedAt || now)
-          : null,
-      });
+      };
+      if (String(p.status || '').trim().toLowerCase() === 'completed') {
+        projectData.completedAt = p.completedAt || now;
+      }
+      const data = toSnake(projectData);
       const created = await db.dbProjects.create(data);
       const camel = toCamel(created);
       set({ projects: [camel, ...get().projects] });
@@ -656,11 +657,14 @@ export const useAppStore = create((set, get) => ({
   // User/Role management
   setUser(userData) {
     const user = {
+      id: userData.id || null,
       role: userData.role || 'admin',
       name: userData.name || 'User',
       email: userData.email || '',
       service: userData.service || '', // For Team Lead
-      userId: userData.userId || '', // For Employee/Client
+      userId: userData.userId || userData.user_id || '', // For Employee/Client
+      username: userData.username || '',
+      companyName: userData.companyName || userData.company_name || '',
     };
     set({ user, userRole: user.role });
   },
@@ -675,7 +679,7 @@ export const useAppStore = create((set, get) => ({
         return null;
       }
       const { data: profile, error } = await supabase.from('users')
-        .select('id, username, name, email, role, avatar, active, service, user_id, auth_user_id')
+        .select('id, username, name, email, role, avatar, active, service, user_id, company_name, auth_user_id')
         .eq('auth_user_id', session.user.id).eq('active', true).single();
       if (error || !profile) throw error || new Error('Authenticated profile not found');
       const roles = normalizeRoles(profile.role, 'employee');
@@ -689,6 +693,7 @@ export const useAppStore = create((set, get) => ({
         service: profile.service || '',
         userId: profile.user_id || '',
         username: profile.username,
+        companyName: profile.company_name || '',
       };
       set({ user, userRole: getPrimaryRole(roles, 'employee'), authInitialized: true });
       return user;

@@ -5,7 +5,6 @@ import { cn } from "../../lib/utils";
 import { parseMessageParts } from "../../utils/chatUtils";
 import { useAppStore } from "../../stores/appStore.js";
 import Avatar from "../Avatar";
-import { ROLE_LABELS, normalizeRoles, getPrimaryRole } from "../../utils/permissions";
 
 export const ChatMessageItem = ({ 
   message, 
@@ -26,42 +25,18 @@ export const ChatMessageItem = ({
   const isRead = deliveryStatus === 'read' || (message.readBy && message.readBy.length > 0);
   const hasAttachments = Array.isArray(message.attachments) && message.attachments.length > 0;
 
-  // Get user role and ID for display
-  const getUserDisplayInfo = () => {
-    const messageUser = allUsers.find(u => (u.id || u.username) === (message.user?.id || message.user?.username));
-    if (!messageUser) return { name: message.user?.name || 'Unknown', role: '', id: '' };
-    
-    const name = messageUser.name || messageUser.username || 'Unknown';
-    let role = '';
-    let id = '';
-    
-    // Get role
-    if (messageUser.role) {
-      const roles = normalizeRoles(messageUser.role);
-      if (roles.length > 0) {
-        const primaryRole = getPrimaryRole(roles)?.toLowerCase();
-        role = ROLE_LABELS[primaryRole] || primaryRole || '';
-        // Format role labels
-        if (role === 'Team Lead') role = 'Team Lead';
-        else if (role === 'Video Editor') role = 'Video Editor';
-        else if (role === 'Graphic Designer') role = 'Graphic Designer';
-      }
-    }
-    
-    // Get ID (employee ID or user ID)
-    id = messageUser.userId || messageUser.user_id || messageUser.employeeId || messageUser.employee_id || messageUser.name || '';
-    if (id && role) {
-      id = `(ID-${id})`;
-    } else if (id && !role) {
-      id = `(ID-${id})`;
-    } else {
-      id = '';
-    }
-    
-    return { name, role, id };
-  };
+  const messageIdentity = String(message.user?.id || message.user?.username || '').trim().toLowerCase();
+  const messageUser = allUsers.find(candidate => {
+    const identities = [
+      candidate.id,
+      candidate.userId,
+      candidate.user_id,
+      candidate.username,
+    ].filter(Boolean).map(value => String(value).trim().toLowerCase());
 
-  const userInfo = getUserDisplayInfo();
+    return messageIdentity && identities.includes(messageIdentity);
+  });
+  const senderName = messageUser?.name || message.user?.name || messageUser?.username || 'Unknown';
 
   // Render delivery status ticks
   const renderTicks = () => {
@@ -118,15 +93,13 @@ export const ChatMessageItem = ({
       <div className={cn("min-w-0 max-w-[calc(100%-48px)] sm:max-w-[72%] md:max-w-[68%] flex flex-col", {
           "items-end": isOwnMessage,
         })}>
-        {/* Header with name, role, and timestamp */}
+        {/* Header with sender name and timestamp */}
         {showHeader && (
           <div className={cn("flex items-center gap-2 mb-1.5 px-1", {
             "justify-end": isOwnMessage,
             })}>
             <span className='font-medium text-slate-200 text-xs sm:text-sm'>
-              {userInfo.name}
-              {userInfo.role && ` - ${userInfo.role}`}
-              {userInfo.id && ` ${userInfo.id}`}
+              {senderName}
             </span>
             <span className='text-slate-400 text-xs'>
               {new Date(message.createdAt).toLocaleDateString("en-US", {

@@ -15,7 +15,7 @@ const generatePassword = (length = 12) => {
 };
 
 export default function UserManagement() {
-  const { user: currentUser, employees } = useAppStore();
+  const { user: currentUser, profiles, agencies, brands } = useAppStore();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -37,7 +37,19 @@ export default function UserManagement() {
     active: true,
     avatar: "",
     editorIds: [],
+    company_name: "",
+    new_company_name: "",
   });
+  const existingCompanies = useMemo(() => [...new Set(
+    [
+      ...profiles.map(item => item.name),
+      ...agencies.map(item => item.name),
+      ...brands.map(item => item.name),
+      ...users.map(candidate => candidate.company_name || candidate.companyName),
+    ]
+      .map(candidate => String(candidate || '').trim())
+      .filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b)), [users, profiles, agencies, brands]);
 
   // Load users
   useEffect(() => {
@@ -95,10 +107,6 @@ export default function UserManagement() {
       // Normalize role to array
       const roles = normalizeRoles(user.role, 'employee');
       
-      let editorIds = [];
-      if (normalizeRoles(user.role, '').includes(ROLES.CLIENT)) {
-        try { editorIds = (await db.dbCustomerEditorAssignments.getByCustomer(user.id)).map((row) => row.employee_id || row.employeeId); } catch (error) { console.error(error); }
-      }
       setForm({
         username: user.username || "",
         password: "", // Don't show existing password
@@ -109,7 +117,9 @@ export default function UserManagement() {
         user_id: user.user_id || "",
         active: user.active !== false,
         avatar: user.avatar || user.profile_picture || user.profilePicture || "",
-        editorIds,
+        editorIds: [],
+        company_name: user.company_name || user.companyName || "",
+        new_company_name: "",
       });
     } else {
       setEditing(null);
@@ -124,6 +134,8 @@ export default function UserManagement() {
         active: true,
         avatar: "",
         editorIds: [],
+        company_name: "",
+        new_company_name: "",
       });
     }
     setOpen(true);
@@ -144,6 +156,8 @@ export default function UserManagement() {
       active: true,
       avatar: "",
       editorIds: [],
+      company_name: "",
+      new_company_name: "",
     });
   };
   
@@ -169,6 +183,14 @@ export default function UserManagement() {
 
     if (!editing && !form.password) {
       alert("Password is required for new users");
+      return;
+    }
+    const enteredCompanyName = form.company_name === '__new__'
+      ? form.new_company_name.trim()
+      : form.company_name.trim();
+    const selectedCompanyName = existingCompanies.find(company => company.toLowerCase() === enteredCompanyName.toLowerCase()) || enteredCompanyName;
+    if (form.roles.includes(ROLES.CLIENT) && !selectedCompanyName) {
+      alert("Company name is required for customer accounts");
       return;
     }
 
@@ -204,6 +226,7 @@ export default function UserManagement() {
         user_id: form.user_id || null,
         active: form.active,
         avatar: form.avatar || null,
+        company_name: form.roles.includes(ROLES.CLIENT) ? selectedCompanyName : null,
       };
 
       let savedUser;
@@ -221,10 +244,6 @@ export default function UserManagement() {
         });
         if (error || !data?.success) throw new Error('Unable to securely save the user password');
       }
-      if (form.roles.includes(ROLES.CLIENT)) {
-        await db.dbCustomerEditorAssignments.setForCustomer(savedUser.id, form.editorIds || []);
-      }
-
       await loadUsers();
       handleClose();
     } catch (error) {
@@ -261,6 +280,7 @@ export default function UserManagement() {
         u.username?.toLowerCase().includes(q) ||
         u.name?.toLowerCase().includes(q) ||
         u.email?.toLowerCase().includes(q) ||
+        (u.company_name || u.companyName || '').toLowerCase().includes(q) ||
         u.role?.toLowerCase().includes(q)
     );
   }, [users, query]);
@@ -350,6 +370,11 @@ export default function UserManagement() {
                     {user.email && (
                       <div className="text-xs text-slate-500 truncate">
                         {user.email}
+                      </div>
+                    )}
+                    {userRoles.includes(ROLES.CLIENT) && (user.company_name || user.companyName) && (
+                      <div className="text-xs font-medium text-blue-400 truncate">
+                        {user.company_name || user.companyName}
                       </div>
                     )}
                   </div>
@@ -665,16 +690,16 @@ export default function UserManagement() {
                   </div>
                 )}
                 {form.roles.includes(ROLES.CLIENT) && (
-                  <div className='rounded-xl border border-blue-500/20 bg-blue-500/5 p-3'>
-                    <label className='text-sm font-medium text-slate-200'>Assigned Editors</label>
-                    <p className='mb-2 text-xs text-slate-500'>This customer can select only these editors when submitting work.</p>
-                    <div className='grid gap-2 sm:grid-cols-2'>
-                      {employees.map((employee) => (
-                        <label key={employee.id} className='flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl bg-slate-800/50 px-3'>
-                          <input type='checkbox' checked={(form.editorIds || []).some((id) => String(id) === String(employee.id))} onChange={(event) => setForm({ ...form, editorIds: event.target.checked ? [...(form.editorIds || []), employee.id] : (form.editorIds || []).filter((id) => String(id) !== String(employee.id)) })}/>
-                          <span className='truncate text-sm text-slate-200'>{employee.name}</span>
-                        </label>
-                      ))}
+                  <div className='grid gap-3 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3'>
+                    <div>
+                      <label className='text-sm font-medium text-slate-200'>Company Name</label>
+                      <p className='mb-2 text-xs text-slate-500'>Choose an existing company to avoid duplicates and spelling mistakes.</p>
+                      <select required className='glass h-11 w-full rounded-xl px-3' value={form.company_name} onChange={(event) => setForm({ ...form, company_name: event.target.value, new_company_name: event.target.value === '__new__' ? form.new_company_name : '' })}>
+                        <option value=''>Select company…</option>
+                        {existingCompanies.map(company => <option key={company} value={company}>{company}</option>)}
+                        <option value='__new__'>+ Add new company</option>
+                      </select>
+                      {form.company_name === '__new__' && <input required autoFocus className='glass mt-2 h-11 w-full rounded-xl px-3' value={form.new_company_name} onChange={(event) => setForm({ ...form, new_company_name: event.target.value })} placeholder='Enter the official company name'/>}
                     </div>
                   </div>
                 )}

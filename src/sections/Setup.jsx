@@ -16,6 +16,7 @@ import {
   useFilteredClients,
   useFilteredProjects,
 } from "../hooks/useRoleFilter.js";
+import { dbCompanyDedicatedEditors } from "../lib/db.js";
 
 export default function Setup() {
   const {
@@ -30,6 +31,7 @@ export default function Setup() {
     addBrand,
     updateBrand,
     deleteBrand,
+    employees,
   } = useAppStore();
   const { profiles, agencies, brands } = useFilteredClients(); // Use filtered clients based on role
   const projects = useFilteredProjects(); // Use filtered projects based on role
@@ -52,16 +54,16 @@ export default function Setup() {
 
   async function handleSave(data) {
     try {
+      const { dedicatedEditorIds = [], ...entityData } = data;
+      let saved;
       if (editType === "profile") {
-        if (editing) await updateProfile(editing.id, data);
-        else await addProfile(data);
+        saved = editing ? await updateProfile(editing.id, entityData) : await addProfile(entityData);
       } else if (editType === "agency") {
-        if (editing) await updateAgency(editing.id, data);
-        else await addAgency(data);
+        saved = editing ? await updateAgency(editing.id, entityData) : await addAgency(entityData);
       } else if (editType === "brand") {
-        if (editing) await updateBrand(editing.id, data);
-        else await addBrand(data);
+        saved = editing ? await updateBrand(editing.id, entityData) : await addBrand(entityData);
       }
+      await dbCompanyDedicatedEditors.setForEntity(editType, editing?.id || saved?.id, dedicatedEditorIds);
       setOpen(false);
     } catch (error) {
       console.error("Failed to save:", error);
@@ -501,6 +503,7 @@ export default function Setup() {
         <SetupDrawer
           type={editType}
           initial={editing}
+          employees={employees}
           onClose={() => setOpen(false)}
           onSave={handleSave}
         />
@@ -509,7 +512,7 @@ export default function Setup() {
   );
 }
 
-function SetupDrawer({ type, initial, onClose, onSave }) {
+function SetupDrawer({ type, initial, employees = [], onClose, onSave }) {
   const [form, setForm] = useState(
     () =>
       initial || {
@@ -524,11 +527,17 @@ function SetupDrawer({ type, initial, onClose, onSave }) {
         country: "",
         zip: "",
         notes: "",
+        dedicatedEditorIds: [],
       }
   );
   useEffect(() => {
-    if (initial) setForm(initial);
-  }, [initial]);
+    let active = true;
+    if (!initial?.id) return undefined;
+    dbCompanyDedicatedEditors.getByEntity(type, initial.id).then(rows => {
+      if (active) setForm({ ...initial, dedicatedEditorIds: rows.map(row => row.employee_id || row.employeeId) });
+    }).catch(error => console.error('Failed to load dedicated editors:', error));
+    return () => { active = false; };
+  }, [initial, type]);
   function set(k, v) {
     setForm((f) => ({ ...f, [k]: v }));
   }
@@ -733,6 +742,17 @@ function SetupDrawer({ type, initial, onClose, onSave }) {
                 value={form.notes || ""}
                 onChange={(e) => set("notes", e.target.value)}
               />
+            </div>
+            <div className='rounded-xl border border-blue-500/20 bg-blue-500/5 p-3'>
+              <label className='text-sm font-medium text-slate-200'>Dedicated Editors</label>
+              <p className='mb-2 text-xs text-slate-500'>Every customer contact linked to this company can assign tasks to these editors.</p>
+              <div className='grid gap-2 sm:grid-cols-2'>
+                {employees.map(employee => <label key={employee.id} className='flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-slate-800/50 px-3'>
+                  <input type='checkbox' checked={(form.dedicatedEditorIds || []).some(id => String(id) === String(employee.id))} onChange={event => set('dedicatedEditorIds', event.target.checked ? [...(form.dedicatedEditorIds || []), employee.id] : (form.dedicatedEditorIds || []).filter(id => String(id) !== String(employee.id)))}/>
+                  <span className='truncate text-sm text-slate-200'>{employee.name}</span>
+                </label>)}
+                {!employees.length && <span className='text-xs text-amber-300'>Add employees in Team first.</span>}
+              </div>
             </div>
             <div className='flex items-center gap-2 mt-2'>
               <button className='btn btn-primary' type='submit'>

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, FolderPlus, Trash2, Edit2, Smile } from 'lucide-react';
+import { X, FolderPlus, Trash2, Edit2 } from 'lucide-react';
 import { useChatStore } from '../../stores/chatStore.js';
 
-const POPULAR_EMOJIS = ['🎬', '🎨', '💻', '📱', '🌐', '📊', '🎯', '🚀', '⚡', '🔥', '💡', '🎪', '🎭', '📝', '📚', '🔧', '⚙️', '🎮', '🎵', '🎤', '📸', '🎥', '🎞️', '🎬', '🎨', '🖌️', '✏️', '📐', '📏', '📌', '📍', '🗂️', '📁', '📂', '📋', '📄', '📃', '📑', '📊', '📈', '📉', '💼', '👔', '🎓', '🏆', '🥇', '🥈', '🥉'];
+const POPULAR_EMOJIS = ['🎬', '🎨', '💻', '📱', '🌐', '📊', '🎯', '🚀', '⚡', '🔥', '💡', '🎪', '🎭', '📝', '📚', '🔧', '⚙️', '🎮', '🎵', '🎤', '📸', '🎥', '🎞️', '🖌️', '✏️', '📐', '📏', '📌', '📍', '🗂️', '📁', '📂', '📋', '📄', '📃', '📑', '📈', '📉', '💼', '👔', '🎓', '🏆', '🥇', '🥈', '🥉'];
 
 export default function SectionDialog({ onClose, sections: initialSections }) {
   const { addSection, deleteSection, updateSection, channels, sections } = useChatStore();
@@ -12,7 +12,7 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
   const [editingSection, setEditingSection] = useState(null);
   const [editName, setEditName] = useState('');
   const [editEmoji, setEditEmoji] = useState('');
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [openEmojiPicker, setOpenEmojiPicker] = useState(null);
   const [error, setError] = useState('');
   const [isAdding, setIsAdding] = useState(false);
 
@@ -37,6 +37,7 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
       if (success) {
         setNewSectionName('');
         setNewSectionEmoji('📁');
+        setOpenEmojiPicker(null);
         setError('');
       } else {
         setError('Failed to add section. Check the database connection and permissions.');
@@ -50,6 +51,7 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
     setEditingSection(section);
     setEditName(section.name);
     setEditEmoji(section.emoji || '📁');
+    setOpenEmojiPicker(null);
     setError('');
   };
 
@@ -72,6 +74,7 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
       setEditingSection(null);
       setEditName('');
       setEditEmoji('📁');
+      setOpenEmojiPicker(null);
       setError('');
     } else {
       setError('Failed to update section');
@@ -82,6 +85,7 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
     setEditingSection(null);
     setEditName('');
     setEditEmoji('📁');
+    setOpenEmojiPicker(null);
     setError('');
   };
 
@@ -147,13 +151,13 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    onClick={() => setOpenEmojiPicker((current) => current === 'new' ? null : 'new')}
                     className="px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-2xl hover:bg-slate-700 transition-colors"
                     title="Select emoji"
                   >
                     {newSectionEmoji}
                   </button>
-                  {showEmojiPicker && (
+                  {openEmojiPicker === 'new' && (
                     <div className="absolute top-full left-0 mt-2 w-64 h-48 bg-slate-800 border border-slate-700 rounded-lg p-3 overflow-y-auto scrollbar-thin z-10 grid grid-cols-8 gap-2">
                       {POPULAR_EMOJIS.map((emoji, idx) => (
                         <button
@@ -161,7 +165,7 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
                           type="button"
                           onClick={() => {
                             setNewSectionEmoji(emoji);
-                            setShowEmojiPicker(false);
+                            setOpenEmojiPicker(null);
                           }}
                           className="text-xl hover:bg-slate-700 rounded p-1 transition-colors"
                         >
@@ -221,12 +225,12 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
                             <div className="relative">
                               <button
                                 type="button"
-                                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                                onClick={() => setOpenEmojiPicker((current) => current === 'edit' ? null : 'edit')}
                                 className="px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-2xl hover:bg-slate-600 transition-colors"
                               >
                                 {editEmoji}
                               </button>
-                              {showEmojiPicker && (
+                              {openEmojiPicker === 'edit' && (
                                 <div className="absolute top-full left-0 mt-2 w-64 h-48 bg-slate-800 border border-slate-700 rounded-lg p-3 overflow-y-auto scrollbar-thin z-10 grid grid-cols-8 gap-2">
                                   {POPULAR_EMOJIS.map((emoji, idx) => (
                                     <button
@@ -234,7 +238,7 @@ export default function SectionDialog({ onClose, sections: initialSections }) {
                                       type="button"
                                       onClick={() => {
                                         setEditEmoji(emoji);
-                                        setShowEmojiPicker(false);
+                                        setOpenEmojiPicker(null);
                                       }}
                                       className="text-xl hover:bg-slate-700 rounded p-1 transition-colors"
                                     >

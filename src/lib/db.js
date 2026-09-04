@@ -160,7 +160,6 @@ export const dbProjects = {
         end_date: project.end_date || null,
         deadline: project.deadline || null,
         paid_at: project.paid_at || project.created_at || new Date().toISOString(),
-        completed_at: project.completed_at || null,
         assigned: assignedValue,
         raw_source_link: project.raw_source_link || project.rawSourceLink || null,
         footage_link: project.footage_link || project.footageLink || null,
@@ -174,6 +173,10 @@ export const dbProjects = {
         ...baseProjectData,
         notes: project.notes || null,
       };
+
+      if (project.completed_at) {
+        projectData.completed_at = project.completed_at;
+      }
 
       let { data, error } = await supabase
         .from(TABLES.projects)
@@ -210,12 +213,8 @@ export const dbProjects = {
       queryCache.invalidatePattern('PROJECTS');
       return data;
     } catch (error) {
-      console.warn('Supabase create failed, using localStorage:', error);
-      const newProject = { ...project, id: crypto.randomUUID(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
-      const all = localStorageGet(TABLES.projects);
-      all.unshift(newProject);
-      localStorageSet(TABLES.projects, all);
-      return newProject;
+      console.error('Supabase project creation failed:', error);
+      throw new Error(error?.message || 'The task could not be saved to the database.');
     }
   },
 
@@ -384,7 +383,7 @@ export const dbEmployees = {
       
       const queryPromise = supabase
         .from(TABLES.employees)
-        .select('id, name, role, email, phone, bank_name, bank_account, avatar, notes, active, rate_type, rate_value, employee_type, monthly_salary, duty_hours, assigned_client, street, city, state, country, zip, created_at, updated_at')
+        .select('id, name, role, email, phone, bank_name, bank_account, avatar, notes, active, rate_type, rate_value, employee_type, monthly_salary, duty_hours, assigned_client, retainer_assignments, street, city, state, country, zip, created_at, updated_at')
         .order('created_at', { ascending: false });
       
       const result = await Promise.race([queryPromise, timeoutPromise]);
@@ -437,6 +436,7 @@ export const dbEmployees = {
         monthly_salary: Number(employee.monthlySalary ?? employee.monthly_salary ?? 0) || 0,
         duty_hours: employee.dutyHours || employee.duty_hours || null,
         assigned_client: employee.assignedClient || employee.assigned_client || null,
+        retainer_assignments: Array.isArray(employee.retainerAssignments || employee.retainer_assignments) ? (employee.retainerAssignments || employee.retainer_assignments) : [],
       };
       
       // Add address fields if they exist (they may not be in the schema yet)
@@ -544,6 +544,7 @@ export const dbEmployees = {
       if (updates.monthlySalary !== undefined || updates.monthly_salary !== undefined) updateData.monthly_salary = Number(updates.monthlySalary ?? updates.monthly_salary ?? 0) || 0;
       if (updates.dutyHours !== undefined || updates.duty_hours !== undefined) updateData.duty_hours = updates.dutyHours || updates.duty_hours || null;
       if (updates.assignedClient !== undefined || updates.assigned_client !== undefined) updateData.assigned_client = updates.assignedClient || updates.assigned_client || null;
+      if (updates.retainerAssignments !== undefined || updates.retainer_assignments !== undefined) updateData.retainer_assignments = Array.isArray(updates.retainerAssignments || updates.retainer_assignments) ? (updates.retainerAssignments || updates.retainer_assignments) : [];
       
       // Try update with address fields first
       const street = updates.street || updates.address_street;
@@ -677,7 +678,7 @@ export const dbEmployeeMonthlyServices = {
     return rows;
   },
 
-  async complete({ employeeId, serviceMonth, fixedSalaryPKR, completedBy }) {
+  async complete({ employeeId, serviceMonth, fixedSalaryPKR, customerRevenuePKR = 0, assignmentSnapshot = [], completedBy }) {
     if (!employeeId || !/^\d{4}-\d{2}$/.test(serviceMonth)) {
       throw new Error('A valid employee and service month are required.');
     }
@@ -686,6 +687,8 @@ export const dbEmployeeMonthlyServices = {
       employee_id: employeeId,
       service_month: `${serviceMonth}-01`,
       fixed_salary_pkr: Math.max(0, Number(fixedSalaryPKR) || 0),
+      customer_revenue_pkr: Math.max(0, Number(customerRevenuePKR) || 0),
+      assignment_snapshot: Array.isArray(assignmentSnapshot) ? assignmentSnapshot : [],
       completed_by: completedBy || null,
       completed_at: new Date().toISOString(),
     };
@@ -746,6 +749,34 @@ export const dbCustomerEditorAssignments = {
   },
 };
 
+export const dbCompanyDedicatedEditors = {
+  async getByEntity(entityType, entityId) {
+    if (!entityType || !entityId) return [];
+    if (!isSupabaseConfigured) return localStorageGet('company_dedicated_editors').filter(row => row.entity_type === entityType && String(row.entity_id) === String(entityId));
+    const { data, error } = await supabase.from('company_dedicated_editors').select('*').eq('entity_type', entityType).eq('entity_id', entityId);
+    if (error) throw error;
+    return data || [];
+  },
+  async getByEntities(entities) {
+    const results = await Promise.all((entities || []).map(entity => this.getByEntity(entity.entityType, entity.entityId)));
+    return results.flat();
+  },
+  async setForEntity(entityType, entityId, employeeIds) {
+    if (!['profile', 'agency', 'brand'].includes(entityType) || !entityId) throw new Error('A valid company record is required.');
+    const ids = [...new Set((employeeIds || []).filter(Boolean))];
+    if (!isSupabaseConfigured) {
+      const existing = localStorageGet('company_dedicated_editors').filter(row => !(row.entity_type === entityType && String(row.entity_id) === String(entityId)));
+      localStorageSet('company_dedicated_editors', [...existing, ...ids.map(employeeId => ({ id: crypto.randomUUID(), entity_type: entityType, entity_id: entityId, employee_id: employeeId }))]);
+      return;
+    }
+    const { error: deleteError } = await supabase.from('company_dedicated_editors').delete().eq('entity_type', entityType).eq('entity_id', entityId);
+    if (deleteError) throw deleteError;
+    if (!ids.length) return;
+    const { error } = await supabase.from('company_dedicated_editors').insert(ids.map(employeeId => ({ entity_type: entityType, entity_id: entityId, employee_id: employeeId })));
+    if (error) throw error;
+  },
+};
+
 export const dbDailyWorkLogs = {
   async getByEmployeeAndDate(employeeId, workDate) {
     if (!employeeId || !workDate) return [];
@@ -760,6 +791,35 @@ export const dbDailyWorkLogs = {
     const row = { id: crypto.randomUUID(), employee_id: entry.employeeId, work_date: entry.workDate, project_task: entry.projectTask.trim(), activity: entry.activity.trim(), minutes_spent: minutes, notes: entry.notes?.trim() || null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
     if (!isSupabaseConfigured) { const rows = localStorageGet('employee_daily_work_logs'); rows.push(row); localStorageSet('employee_daily_work_logs', rows); return row; }
     const { data, error } = await supabase.from('employee_daily_work_logs').insert(row).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async update(id, entry) {
+    const minutes = Number(entry.minutesSpent);
+    if (!id || !entry.projectTask?.trim() || !entry.activity?.trim() || !Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+      throw new Error('Complete all required work-log fields with a valid time.');
+    }
+    const updates = {
+      project_task: entry.projectTask.trim(),
+      activity: entry.activity.trim(),
+      minutes_spent: minutes,
+      notes: entry.notes?.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+    if (!isSupabaseConfigured) {
+      const rows = localStorageGet('employee_daily_work_logs');
+      const index = rows.findIndex((row) => String(row.id) === String(id));
+      if (index < 0) throw new Error('Work-log activity not found.');
+      rows[index] = { ...rows[index], ...updates };
+      localStorageSet('employee_daily_work_logs', rows);
+      return rows[index];
+    }
+    const { data, error } = await supabase
+      .from('employee_daily_work_logs')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
     if (error) throw error;
     return data;
   },
@@ -1490,7 +1550,7 @@ export const dbUsers = {
       
       const queryPromise = supabase
         .from('users')
-        .select('id, username, name, email, role, avatar, active, service, user_id, created_at, updated_at')
+        .select('id, username, name, email, role, avatar, active, service, user_id, company_name, created_at, updated_at')
         .order('created_at', { ascending: false })
         .limit(1000);
       
@@ -1530,7 +1590,7 @@ export const dbUsers = {
     const { data, error } = await supabase
       .from('users')
       .insert(userData)
-      .select('id, username, name, email, role, avatar, active, service, user_id, auth_user_id, created_at, updated_at')
+      .select('id, username, name, email, role, avatar, active, service, user_id, company_name, auth_user_id, created_at, updated_at')
       .single();
     if (error) handleError(error, 'create user');
     // Sync to localStorage
@@ -1556,7 +1616,7 @@ export const dbUsers = {
         .from('users')
         .update({ ...updates, updated_at: new Date().toISOString() })
         .eq('id', id)
-        .select('id, username, name, email, role, avatar, active, service, user_id, auth_user_id, created_at, updated_at')
+        .select('id, username, name, email, role, avatar, active, service, user_id, company_name, auth_user_id, created_at, updated_at')
         .single();
       
       // If error mentions unknown column (like 'avatar'), retry without that field

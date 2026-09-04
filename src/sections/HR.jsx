@@ -24,9 +24,10 @@ import {
   useFilteredEmployees,
   useFilteredProjects,
 } from "../hooks/useRoleFilter.js";
-import { hasPermission, PERMISSIONS } from "../utils/permissions.js";
-import { dbEmployeeMonthlyServices } from "../lib/db.js";
+import { hasPermission, PERMISSIONS, hasRole, normalizeRoles, ROLES } from "../utils/permissions.js";
+import { dbCompanyDedicatedEditors, dbDailyWorkLogs, dbEmployeeMonthlyServices } from "../lib/db.js";
 import DailyWorkLog from "../components/DailyWorkLog.jsx";
+import { downloadMonthlyWorkLogPDF } from "../utils/workLogReport.js";
 
 export default function HR() {
   const {
@@ -40,12 +41,47 @@ export default function HR() {
     refreshEmployees,
     employees: allEmployees,
     user,
+    profiles,
+    agencies,
+    brands,
+    allUsers,
   } = useAppStore();
-  const employees = useFilteredEmployees(); // Use filtered employees based on role
+  const roleFilteredEmployees = useFilteredEmployees();
   const projects = useFilteredProjects(); // Use filtered projects based on role
   const [refreshing, setRefreshing] = useState(false);
   const [monthlyServices, setMonthlyServices] = useState([]);
   const [completingServiceId, setCompletingServiceId] = useState(null);
+  const [detailsCardId, setDetailsCardId] = useState(null);
+  const [customerEmployeeIds, setCustomerEmployeeIds] = useState([]);
+  const currentRoles = normalizeRoles(user?.role, '');
+  const isCustomerView = hasRole(currentRoles, ROLES.CLIENT);
+  const isAdminView = hasRole(currentRoles, ROLES.ADMIN);
+  const isManagerView = hasRole(currentRoles, ROLES.MANAGER) && !isAdminView;
+  const canSeeOwnFinance = hasRole(currentRoles, ROLES.EMPLOYEE);
+  const canSeeFinance = isAdminView || (!isManagerView && canSeeOwnFinance);
+  const employees = isCustomerView
+    ? allEmployees.filter(employee => customerEmployeeIds.some(id => String(id) === String(employee.id)))
+    : roleFilteredEmployees;
+
+  useEffect(() => {
+    if (!isCustomerView) return;
+    const companyName = String(user?.companyName || user?.company_name || '').trim().toLowerCase();
+    if (!companyName) {
+      setCustomerEmployeeIds([]);
+      return;
+    }
+    const entities = [
+      ...profiles.map(item => ({ entityType: 'profile', entityId: item.id, name: item.name })),
+      ...agencies.map(item => ({ entityType: 'agency', entityId: item.id, name: item.name })),
+      ...brands.map(item => ({ entityType: 'brand', entityId: item.id, name: item.name })),
+    ].filter(item => String(item.name || '').trim().toLowerCase() === companyName);
+    dbCompanyDedicatedEditors.getByEntities(entities)
+      .then(rows => setCustomerEmployeeIds([...new Set(rows.map(row => row.employee_id || row.employeeId).filter(Boolean))]))
+      .catch(error => {
+        console.error('Failed to load customer dedicated editors:', error);
+        setCustomerEmployeeIds([]);
+      });
+  }, [isCustomerView, user?.companyName, user?.company_name, profiles, agencies, brands]);
 
   // Debug logging
   useEffect(() => {
@@ -218,6 +254,11 @@ export default function HR() {
         ? (Number(serviceCompletion.fixed_salary_pkr ?? serviceCompletion.fixedSalaryPKR ?? 0) || 0)
         : 0;
       const fixedSalary = convert(fixedSalaryPKR, "PKR", currency, rate);
+      const retainerAssignments = Array.isArray(e.retainerAssignments || e.retainer_assignments) ? (e.retainerAssignments || e.retainer_assignments) : [];
+      const configuredRetainerRevenuePKR = retainerAssignments.reduce((total, assignment) => total + convert(Number(assignment.monthlyRevenue) || 0, assignment.currency || 'PKR', 'PKR', rate), 0);
+      const customerRevenuePKR = serviceCompletion
+        ? Number(serviceCompletion.customer_revenue_pkr ?? serviceCompletion.customerRevenuePKR ?? 0) || 0
+        : 0;
       const projectPayout = (map.get(empName) || { projectPayout: 0 }).projectPayout;
       const projectPayoutPKR = (map.get(empName) || { projectPayoutPKR: 0 }).projectPayoutPKR;
 
@@ -235,12 +276,18 @@ export default function HR() {
         state: e.state || e.address_state || "",
         country: e.country || e.address_country || "",
         zip: e.zip || e.address_zip || "",
+        notes: e.notes || "",
         projects: (map.get(empName) || { projects: 0 }).projects,
         revisions: (map.get(empName) || { revisions: 0 }).revisions,
         employeeType,
         monthlySalary: fixedSalaryPKR,
         dutyHours: e.dutyHours || e.duty_hours || "",
         assignedClient: e.assignedClient || e.assigned_client || "",
+        retainerAssignments,
+        customerRevenuePKR,
+        retainerGrossProfitPKR: customerRevenuePKR - fixedSalaryPKR,
+        configuredRetainerRevenuePKR,
+        configuredRetainerGrossProfitPKR: configuredRetainerRevenuePKR - (Number(e.monthlySalary ?? e.monthly_salary ?? 0) || 0),
         monthlyServiceCompleted: Boolean(serviceCompletion),
         monthlyServiceCompletedAt: serviceCompletion?.completed_at || serviceCompletion?.completedAt || null,
         configuredMonthlySalaryPKR: Number(e.monthlySalary ?? e.monthly_salary ?? 0) || 0,
@@ -357,7 +404,9 @@ export default function HR() {
             </div>
           </div>
         ) : (
-          displayed.map((r, index) => (
+          displayed.map((r, index) => isCustomerView ? (
+            <CustomerTeamCard key={r.id} employee={r} month={month} customerName={user?.companyName || user?.company_name || user?.name} currentUser={user}/>
+          ) : (
           <motion.div
             key={r.id}
             initial={{ opacity: 0, y: 20 }}
@@ -366,6 +415,31 @@ export default function HR() {
             className='card group hover:shadow-2xl hover:scale-[1.02] transition-all duration-300 relative overflow-hidden'>
             {/* Gradient accent bar */}
             <div className='absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500'></div>
+
+            {detailsCardId === r.id && (
+              <div className='absolute inset-0 z-20 flex flex-col overflow-hidden bg-white p-4 dark:bg-slate-950'>
+                <div className='flex items-center justify-between border-b border-slate-200/30 pb-3 dark:border-slate-700/30'>
+                  <div>
+                    <div className='font-bold text-slate-900 dark:text-slate-100'>{r.name}</div>
+                    <div className='text-xs text-slate-500'>Contact, banking and address details</div>
+                  </div>
+                  <button type='button' className='grid h-10 w-10 place-items-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' onClick={() => setDetailsCardId(null)} aria-label='Return to employee summary'><X size={18}/></button>
+                </div>
+                <div className='mt-3 grid flex-1 content-start gap-2 overflow-y-auto text-sm'>
+                  <DetailRow icon={Mail} label='Email' value={r.email}/>
+                  <DetailRow icon={Phone} label='Phone' value={r.phone}/>
+                  {canSeeFinance && <DetailRow icon={Building2} label='Bank name' value={r.bankName}/>} 
+                  {canSeeFinance && <DetailRow icon={CreditCard} label='Bank account number' value={r.bankAccount} mono/>}
+                  <DetailRow icon={MapPin} label='Address' value={[
+                    r.street,
+                    [r.city, r.state, r.zip].filter(Boolean).join(', '),
+                    r.country,
+                  ].filter(Boolean).join('\n')}/>
+                  <DetailRow icon={Briefcase} label='Notes' value={r.notes}/>
+                </div>
+                <button type='button' className='btn btn-secondary mt-3 min-h-11 w-full' onClick={() => setDetailsCardId(null)}>Back to summary</button>
+              </div>
+            )}
 
             {/* Header Section */}
             <div className='flex items-start gap-4 mb-4 pb-4 border-b border-slate-200/30 dark:border-slate-700/30'>
@@ -408,8 +482,8 @@ export default function HR() {
               </div>
             </div>
 
-            {/* Payout Section - Highlighted */}
-            <div className='mb-4 p-4 rounded-2xl bg-gradient-to-br from-blue-500/15 via-purple-500/15 to-pink-500/15 border border-blue-500/20 dark:border-blue-500/30 backdrop-blur-sm'>
+            {/* Payout Section - Admin and the employee's own card only */}
+            {canSeeFinance && <div className='mb-4 p-4 rounded-2xl bg-gradient-to-br from-blue-500/15 via-purple-500/15 to-pink-500/15 border border-blue-500/20 dark:border-blue-500/30 backdrop-blur-sm'>
               <div className='flex items-center justify-between mb-2'>
                 <div className='flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider'>
                   <Wallet size={14} />
@@ -428,13 +502,35 @@ export default function HR() {
               {(r.employeeType === "retainer" || r.employeeType === "hybrid") && (
                 <div className='mt-3 grid grid-cols-2 gap-2 border-t border-blue-500/20 pt-3 text-xs'>
                   <div>
-                    <div className='text-slate-500'>Fixed salary</div>
-                    <div className='font-semibold text-slate-200'>{new Intl.NumberFormat("en").format(r.fixedSalaryPKR)} PKR</div>
+                    <div className='text-slate-500'>Fixed monthly salary</div>
+                    <div className='font-semibold text-slate-200'>{new Intl.NumberFormat("en").format(r.configuredMonthlySalaryPKR)} PKR</div>
+                    <div className={`mt-0.5 text-[10px] ${r.monthlyServiceCompleted ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {r.monthlyServiceCompleted ? 'Added to this month’s payout' : 'Not yet added to payout'}
+                    </div>
                   </div>
                   <div>
                     <div className='text-slate-500'>Project earnings</div>
                     <div className='font-semibold text-slate-200'>{new Intl.NumberFormat("en").format(r.projectPayoutPKR)} PKR</div>
                   </div>
+                  {isAdminView && <div>
+                    <div className='text-slate-500'>Monthly retainer revenue</div>
+                    <div className='font-semibold text-emerald-300'>{new Intl.NumberFormat("en").format(r.configuredRetainerRevenuePKR)} PKR</div>
+                  </div>}
+                  {isAdminView && <div>
+                    <div className='text-slate-500'>Expected gross profit</div>
+                    <div className='font-semibold text-emerald-300'>{new Intl.NumberFormat("en").format(r.configuredRetainerGrossProfitPKR)} PKR</div>
+                  </div>}
+                </div>
+              )}
+              {isAdminView && (r.employeeType === "retainer" || r.employeeType === "hybrid") && r.retainerAssignments.length > 0 && (
+                <div className='mt-3 space-y-1 border-t border-blue-500/20 pt-3 text-xs'>
+                  <div className='text-slate-500'>Customer assignments</div>
+                  {r.retainerAssignments.map((assignment) => (
+                    <div key={`${assignment.entityType}-${assignment.entityId}`} className='flex justify-between gap-2 text-slate-300'>
+                      <span className='truncate'>{assignment.name} · {assignment.dailyHours || 0}h/day</span>
+                      <span className='shrink-0'>{new Intl.NumberFormat("en").format(Number(assignment.monthlyRevenue) || 0)} {assignment.currency || 'PKR'}</span>
+                    </div>
+                  ))}
                 </div>
               )}
               {(r.employeeType === "retainer" || r.employeeType === "hybrid") && (
@@ -455,7 +551,9 @@ export default function HR() {
                           await dbEmployeeMonthlyServices.complete({
                             employeeId: r.id,
                             serviceMonth: month,
-                            fixedSalaryPKR: r.configuredMonthlySalaryPKR,
+                          fixedSalaryPKR: r.configuredMonthlySalaryPKR,
+                          customerRevenuePKR: r.retainerAssignments.reduce((total, assignment) => total + convert(Number(assignment.monthlyRevenue) || 0, assignment.currency || 'PKR', 'PKR', rate), 0),
+                          assignmentSnapshot: r.retainerAssignments,
                             completedBy: user?.userId || user?.user_id || user?.name || null,
                           });
                           await refreshMonthlyServices();
@@ -479,7 +577,7 @@ export default function HR() {
                   <span>Active this month</span>
                 </div>
               )}
-            </div>
+            </div>}
 
             {/* Stats Grid */}
             <div className='grid grid-cols-2 gap-3 mb-4'>
@@ -561,92 +659,13 @@ export default function HR() {
               </div>
             )}
 
-            {/* Address Info */}
-            {(r.street || r.city || r.state || r.country || r.zip) && (
-              <div className='pt-4 border-t border-slate-200/30 dark:border-slate-700/30 space-y-2'>
-                <div className='flex items-start gap-3 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/30 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors'>
-                  <div className='w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center flex-shrink-0'>
-                    <MapPin size={14} className='text-indigo-500' />
-                  </div>
-                  <div className='flex-1 min-w-0'>
-                    <div className='text-xs text-slate-400 mb-0.5'>Address</div>
-                    <div className='text-sm text-slate-700 dark:text-slate-300'>
-                      {r.street && <div>{r.street}</div>}
-                      {(r.city || r.state || r.zip) && (
-                        <div>
-                          {[r.city, r.state, r.zip].filter(Boolean).join(", ")}
-                        </div>
-                      )}
-                      {r.country && <div>{r.country}</div>}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Contact & Bank Info */}
-            {(r.email || r.phone || r.bankName || r.bankAccount) && (
-              <div className='pt-4 border-t border-slate-200/30 dark:border-slate-700/30 space-y-2'>
-                {r.email && (
-                  <div className='flex items-center gap-3 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/30 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors'>
-                    <div className='w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0'>
-                      <Mail size={14} className='text-blue-500' />
-                    </div>
-                    <div className='flex-1 min-w-0'>
-                      <div className='text-xs text-slate-400 mb-0.5'>Email</div>
-                      <div className='text-sm text-slate-700 dark:text-slate-300 truncate font-medium'>
-                        {r.email}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {r.phone && (
-                  <div className='flex items-center gap-3 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/30 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors'>
-                    <div className='w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0'>
-                      <Phone size={14} className='text-green-500' />
-                    </div>
-                    <div className='flex-1 min-w-0'>
-                      <div className='text-xs text-slate-400 mb-0.5'>Phone</div>
-                      <div className='text-sm text-slate-700 dark:text-slate-300 font-medium'>
-                        {r.phone}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {r.bankName && (
-                  <div className='flex items-center gap-3 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/30 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors'>
-                    <div className='w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0'>
-                      <Building2 size={14} className='text-purple-500' />
-                    </div>
-                    <div className='flex-1 min-w-0'>
-                      <div className='text-xs text-slate-400 mb-0.5'>Bank</div>
-                      <div className='text-sm text-slate-700 dark:text-slate-300 truncate font-medium'>
-                        {r.bankName}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {r.bankAccount && (
-                  <div className='flex items-center gap-3 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/30 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors'>
-                    <div className='w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center flex-shrink-0'>
-                      <CreditCard size={14} className='text-pink-500' />
-                    </div>
-                    <div className='flex-1 min-w-0'>
-                      <div className='text-xs text-slate-400 mb-0.5'>
-                        Account
-                      </div>
-                      <div className='text-sm text-slate-700 dark:text-slate-300 font-mono font-medium'>
-                        {r.bankAccount}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Action Buttons */}
             <div className='mt-5 pt-4 border-t border-slate-200/30 dark:border-slate-700/30 flex justify-between items-center'>
-              <div className='flex flex-wrap gap-2'><button
+              <div className='flex flex-wrap gap-2'>
+              <button type='button' className='glass px-3 py-1.5 rounded-lg text-xs inline-flex items-center gap-1 text-slate-700 dark:text-slate-300 hover:bg-blue-500/15 hover:text-blue-400 transition-colors' onClick={() => setDetailsCardId(r.id)}>
+                <Building2 size={14}/> Contact details
+              </button>
+              {canSeeFinance && <button
                 className='glass px-3 py-1.5 rounded-lg text-xs inline-flex items-center gap-1 text-slate-700 dark:text-slate-300 hover:bg-green-500/15 hover:text-green-400 transition-colors'
                 onClick={() => {
                   try {
@@ -659,7 +678,7 @@ export default function HR() {
                 }}>
                 <Download size={14} />
                 Salary PDF
-              </button>
+              </button>}
               {(r.employeeType === "retainer" || r.employeeType === "hybrid") && <DailyWorkLog employee={r} currentUser={user}/>}</div>
               {(hasPermission(userRole, PERMISSIONS.EDIT_TEAM_MEMBERS) || hasPermission(userRole, PERMISSIONS.DELETE_TEAM_MEMBERS)) && (
               <div className='flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity'>
@@ -709,6 +728,13 @@ export default function HR() {
       {open && createPortal(
         <EmployeeDrawer
           initial={editing}
+          canManageRetainerFinance={isAdminView}
+          assignmentOptions={[
+            ...profiles.map(item => ({ entityType: 'profile', entityId: item.id, name: item.name || item.username, group: 'Freelance Profiles' })),
+            ...brands.map(item => ({ entityType: 'brand', entityId: item.id, name: item.name, group: 'Brands / Businesses' })),
+            ...agencies.map(item => ({ entityType: 'agency', entityId: item.id, name: item.name, group: 'Collaborative Agencies' })),
+            ...allUsers.filter(item => String(item.role || '').toLowerCase().includes('client')).map(item => ({ entityType: 'customer', entityId: item.id, name: item.companyName || item.company_name || item.name, group: 'Customer Companies' })),
+          ].filter(item => item.entityId && item.name)}
           onClose={() => {
             setOpen(false);
             setEditing(null); // Clear editing state when closing
@@ -753,7 +779,50 @@ export default function HR() {
   );
 }
 
-function EmployeeDrawer({ initial, onClose, onSave }) {
+function DetailRow({ icon: Icon, label, value, mono = false }) {
+  return (
+    <div className='flex items-start gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/40'>
+      <div className='grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-500/10 text-blue-500'><Icon size={15}/></div>
+      <div className='min-w-0 flex-1'>
+        <div className='text-[11px] text-slate-500'>{label}</div>
+        <div className={`whitespace-pre-line break-words text-sm text-slate-700 dark:text-slate-200 ${mono ? 'font-mono' : ''}`}>{value || 'Not provided'}</div>
+      </div>
+    </div>
+  );
+}
+
+function CustomerTeamCard({ employee, month, customerName, currentUser }) {
+  const [downloading, setDownloading] = useState(false);
+  return (
+    <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className='card relative overflow-hidden p-4'>
+      <div className='absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500'/>
+      <div className='flex items-center gap-3'>
+        {employee.avatar ? <img src={employee.avatar} alt={employee.name} className='h-12 w-12 rounded-xl border border-blue-500/40 object-cover'/> : <div className='grid h-12 w-12 place-items-center rounded-xl bg-blue-600 font-bold text-white'>{employee.name?.charAt(0) || '?'}</div>}
+        <div className='min-w-0'><div className='truncate font-semibold text-slate-100'>{employee.name}</div><div className='truncate text-xs text-slate-400'>{employee.role || 'Dedicated editor'}</div></div>
+      </div>
+      <div className='mt-4 grid grid-cols-2 gap-2'>
+        <div className='rounded-xl bg-slate-800/50 p-3'><div className='text-xs text-slate-500'>Projects</div><div className='mt-1 text-xl font-bold text-white'>{employee.projects}</div></div>
+        <div className='rounded-xl bg-slate-800/50 p-3'><div className='text-xs text-slate-500'>Quantity</div><div className='mt-1 text-xl font-bold text-white'>{employee.quantity}</div></div>
+      </div>
+      <div className='mt-4 flex flex-wrap items-center gap-2'>
+      <DailyWorkLog employee={employee} currentUser={currentUser} todayOnly triggerLabel="Today’s Work Log"/>
+      <button type='button' disabled={downloading} className='glass inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg px-3 text-xs disabled:opacity-60' onClick={async () => {
+        setDownloading(true);
+        try {
+          const rows = await dbDailyWorkLogs.getByEmployeeAndMonth(employee.id, month);
+          downloadMonthlyWorkLogPDF({ ...employee, assignedClient: customerName, retainerAssignments: [] }, month, rows);
+        } catch (error) {
+          alert(error.message || 'Failed to download work log.');
+        } finally {
+          setDownloading(false);
+        }
+      }}><Download size={14}/>{downloading ? 'Preparing…' : 'Monthly PDF'}</button>
+      </div>
+    </motion.div>
+  );
+}
+
+function EmployeeDrawer({ initial, assignmentOptions = [], canManageRetainerFinance = false, onClose, onSave }) {
   const [form, setForm] = useState(
     () =>
       initial || {
@@ -774,6 +843,7 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
         monthlySalary: "",
         dutyHours: "",
         assignedClient: "",
+        retainerAssignments: [],
       }
   );
   
@@ -826,6 +896,7 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
       monthlySalary: ["retainer", "hybrid"].includes(form.employeeType || form.employee_type) ? Math.max(0, Number(form.monthlySalary ?? form.monthly_salary) || 0) : 0,
       dutyHours: ["retainer", "hybrid"].includes(form.employeeType || form.employee_type) ? (form.dutyHours || form.duty_hours || "") : "",
       assignedClient: ["retainer", "hybrid"].includes(form.employeeType || form.employee_type) ? (form.assignedClient || form.assigned_client || "") : "",
+      retainerAssignments: ["retainer", "hybrid"].includes(form.employeeType || form.employee_type) && Array.isArray(form.retainerAssignments || form.retainer_assignments) ? (form.retainerAssignments || form.retainer_assignments) : [],
     };
     console.log("📦 EmployeeDrawer: Calling onSave with payload:", payload);
     onSave(payload);
@@ -911,7 +982,7 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
           </div>
           {["retainer", "hybrid"].includes(form.employeeType || form.employee_type) && (
             <div className='grid gap-3 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3'>
-              <div>
+              {canManageRetainerFinance && <div>
                 <label className='text-xs text-slate-500'>Fixed Monthly Salary (PKR)</label>
                 <input
                   className='glass w-full px-3 py-2 rounded-xl'
@@ -922,7 +993,7 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
                   value={form.monthlySalary ?? form.monthly_salary ?? ""}
                   onChange={(e) => set("monthlySalary", e.target.value)}
                 />
-              </div>
+              </div>}
               <div>
                 <label className='text-xs text-slate-500'>Working Hours / Duty Time</label>
                 <input
@@ -932,15 +1003,31 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
                   placeholder='e.g. 9:00 AM – 6:00 PM'
                 />
               </div>
-              <div>
-                <label className='text-xs text-slate-500'>Assigned Customer / Client</label>
-                <input
-                  className='glass w-full px-3 py-2 rounded-xl'
-                  value={form.assignedClient || form.assigned_client || ""}
-                  onChange={(e) => set("assignedClient", e.target.value)}
-                  placeholder='Client or company name'
-                />
-              </div>
+              {canManageRetainerFinance && <div>
+                <label className='text-xs text-slate-500'>Customer / Profile / Brand / Agency Assignments</label>
+                <p className='mb-2 text-[11px] text-slate-500'>Select one or more accounts, then set allocated hours and the monthly retainer paid to the company.</p>
+                <div className='grid max-h-64 gap-2 overflow-y-auto pr-1'>
+                  {assignmentOptions.map((option) => {
+                    const assignments = Array.isArray(form.retainerAssignments || form.retainer_assignments) ? (form.retainerAssignments || form.retainer_assignments) : [];
+                    const index = assignments.findIndex(item => item.entityType === option.entityType && String(item.entityId) === String(option.entityId));
+                    const assignment = index >= 0 ? assignments[index] : null;
+                    const updateAssignment = (changes) => set('retainerAssignments', assignments.map((item, itemIndex) => itemIndex === index ? { ...item, ...changes } : item));
+                    return <div key={`${option.entityType}-${option.entityId}`} className='rounded-xl bg-slate-800/50 p-2'>
+                      <label className='flex min-h-9 cursor-pointer items-center gap-2'>
+                        <input type='checkbox' checked={Boolean(assignment)} onChange={(event) => set('retainerAssignments', event.target.checked ? [...assignments, { ...option, dailyHours: 4, monthlyRevenue: 0, currency: 'USD' }] : assignments.filter((_, itemIndex) => itemIndex !== index))}/>
+                        <span className='min-w-0 flex-1 truncate text-sm text-slate-200'>{option.name}</span>
+                        <span className='text-[10px] text-slate-500'>{option.group}</span>
+                      </label>
+                      {assignment && <div className='mt-2 grid grid-cols-3 gap-2'>
+                        <label className='text-[10px] text-slate-500'>Hours/day<input className='glass mt-1 h-9 w-full rounded-lg px-2 text-sm' type='number' min='0.25' max='24' step='0.25' value={assignment.dailyHours} onChange={(event) => updateAssignment({ dailyHours: Math.max(0.25, Number(event.target.value) || 0.25) })}/></label>
+                        <label className='col-span-1 text-[10px] text-slate-500'>Monthly fee<input className='glass mt-1 h-9 w-full rounded-lg px-2 text-sm' type='number' min='0' step='0.01' value={assignment.monthlyRevenue} onChange={(event) => updateAssignment({ monthlyRevenue: Math.max(0, Number(event.target.value) || 0) })}/></label>
+                        <label className='text-[10px] text-slate-500'>Currency<select className='glass mt-1 h-9 w-full rounded-lg px-2 text-sm' value={assignment.currency || 'USD'} onChange={(event) => updateAssignment({ currency: event.target.value })}><option>USD</option><option>PKR</option></select></label>
+                      </div>}
+                    </div>;
+                  })}
+                  {assignmentOptions.length === 0 && <div className='text-xs text-amber-300'>Add profiles, brands, agencies, or customer companies in Setup/Users first.</div>}
+                </div>
+              </div>}
             </div>
           )}
           <div className='grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3'>

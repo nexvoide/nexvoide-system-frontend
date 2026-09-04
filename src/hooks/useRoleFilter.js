@@ -73,8 +73,10 @@ export function useFilteredProjects() {
 
     // If user has CLIENT role, include their own projects
     if (hasRole(roles, ROLES.CLIENT)) {
-      if (user.userId || user.user_id || user.name) {
-        const userId = user.userId || user.user_id || user.name || '';
+      const clientIdentities = [user.id, user.userId, user.user_id, user.name, user.username]
+        .map(value => String(value || '').trim().toLowerCase())
+        .filter(Boolean);
+      if (clientIdentities.length > 0) {
         projects.filter(p => {
           // Handle both camelCase and snake_case field names
           const clientName = p.clientName || p.client_name || '';
@@ -83,10 +85,10 @@ export function useFilteredProjects() {
           const profileId = p.profileId || p.profile_id;
           
           // Match by client name or brand/agency/profile ID
-          return clientName.toLowerCase() === userId.toLowerCase() ||
-                 String(brandId || '') === String(userId) ||
-                 String(agencyId || '') === String(userId) ||
-                 String(profileId || '') === String(userId);
+          return clientIdentities.includes(String(clientName).trim().toLowerCase()) ||
+                 clientIdentities.includes(String(brandId || '').trim().toLowerCase()) ||
+                 clientIdentities.includes(String(agencyId || '').trim().toLowerCase()) ||
+                 clientIdentities.includes(String(profileId || '').trim().toLowerCase());
         }).forEach(p => matchingProjects.add(p.id));
       }
     }
@@ -102,7 +104,7 @@ export function useFilteredProjects() {
  * Other users see only their own card (matched by Employee ID/Name)
  */
 export function useFilteredEmployees() {
-  const { employees, user, userRole } = useAppStore();
+  const { employees, user } = useAppStore();
 
   return useMemo(() => {
     if (!user || !user.role) return [];
@@ -115,21 +117,37 @@ export function useFilteredEmployees() {
         return employees;
     }
 
-    // For other roles (TEAM_LEAD, EMPLOYEE, CLIENT), see only their own employee card
-    // Match by user_id (Employee ID/Name) with employee name
-    if (!user.userId && !user.user_id) return [];
-    
-    const userId = user.userId || user.user_id || '';
-    if (!userId) return [];
-    
-    // Find employee card that matches the user's Employee ID/Name
-    const ownEmployee = employees.find(emp => {
-      const empName = emp.name || emp.employee_name || '';
-      // Match by exact name or case-insensitive match
-      return empName === userId || 
-             empName.toLowerCase() === userId.toLowerCase() ||
-             emp.id === userId;
-    });
+    // Match the employee against every stable identity available on the user.
+    // A user's `user_id` may be an internal code rather than their employee name,
+    // so it must not prevent a valid full-name match.
+    const normalizeIdentity = (value) => String(value ?? '')
+      .normalize('NFKC')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .toLowerCase();
+
+    const userIdentities = new Set(
+      [user.id, user.userId, user.user_id, user.username, user.name, user.email]
+        .map(normalizeIdentity)
+        .filter(Boolean)
+    );
+
+    if (userIdentities.size === 0) return [];
+
+    const ownEmployee = employees.find((employee) =>
+      [
+        employee?.id,
+        employee?.userId,
+        employee?.user_id,
+        employee?.name,
+        employee?.employeeName,
+        employee?.employee_name,
+        employee?.email,
+      ]
+        .map(normalizeIdentity)
+        .filter(Boolean)
+        .some((identity) => userIdentities.has(identity))
+    );
     
     return ownEmployee ? [ownEmployee] : [];
   }, [employees, user]);

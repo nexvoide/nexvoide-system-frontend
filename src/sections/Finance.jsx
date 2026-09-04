@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useAppStore, convert } from "../stores/appStore.js";
 import { Wallet, TrendingUp, TrendingDown, DollarSign, BarChart3, Activity, PieChart as PieChartIcon } from "lucide-react";
 import { 
@@ -7,12 +7,20 @@ import {
 } from "recharts";
 import { motion } from "framer-motion";
 import { useFilteredProjects, useCanViewFinance, useCanViewFinanceDetails } from "../hooks/useRoleFilter.js";
+import { dbEmployeeMonthlyServices } from "../lib/db.js";
 
 export default function Finance() {
   const { rate, currency } = useAppStore();
   const projects = useFilteredProjects(); // Use filtered projects based on role
   const canViewFinance = useCanViewFinance();
   const canViewFinanceDetails = useCanViewFinanceDetails();
+  const [monthlyServices, setMonthlyServices] = useState([]);
+
+  useEffect(() => {
+    dbEmployeeMonthlyServices.getAll()
+      .then(rows => setMonthlyServices(Array.isArray(rows) ? rows : []))
+      .catch(error => console.error('Failed to load retainer finance entries:', error));
+  }, []);
 
   // If user doesn't have permission to view finance, show access denied
   if (!canViewFinance) {
@@ -65,9 +73,13 @@ export default function Finance() {
       // Revision Revenue: Show net value (after team payout deduction)
       if (p.status === 'Revision' || p.status === 'Revising') revisionRevenue += netValue;
     }
+    for (const service of monthlyServices) {
+      totalRevenue += convert(service.customer_revenue_pkr || service.customerRevenuePKR || 0, 'PKR', currency, rate);
+      totalExpenses += convert(service.fixed_salary_pkr || service.fixedSalaryPKR || 0, 'PKR', currency, rate);
+    }
     const netProfit = totalRevenue - totalExpenses;
     return { totalRevenue, totalExpenses, netProfit, completedRevenue, pendingRevenue, inProgressRevenue, cancelledRevenue, revisionRevenue };
-  }, [projects, currency, rate]);
+  }, [projects, monthlyServices, currency, rate]);
 
   const fmt = (n, cur) => new Intl.NumberFormat('en', { style: 'currency', currency: cur, maximumFractionDigits: 2 }).format(n);
   function computeIn(cur){
@@ -94,6 +106,14 @@ export default function Finance() {
       if (p.status==='Cancelled' || p.status==='Cancel') cancelledRevenue += order;
       // Revision Revenue: Show net value (after team payout deduction)
       if (p.status==='Revision' || p.status==='Revising') revisionRevenue += netValue;
+    }
+    for (const service of monthlyServices) {
+      const revenue = convert(service.customer_revenue_pkr || service.customerRevenuePKR || 0, 'PKR', cur, rate);
+      const salary = convert(service.fixed_salary_pkr || service.fixedSalaryPKR || 0, 'PKR', cur, rate);
+      totalRevenue += revenue;
+      totalExpenses += salary;
+      completedRevenue += revenue;
+      employeeCompleted += salary;
     }
     // Profit is only from completed orders
     const netProfit = completedRevenue - employeeCompleted;
@@ -130,10 +150,17 @@ export default function Finance() {
         }
         profit = revenue - expenses;
       }
+      for (const service of monthlyServices) {
+        const serviceMonth = String(service.service_month || service.serviceMonth || '').slice(0, 7);
+        if (serviceMonth !== monthKey) continue;
+        revenue += convert(service.customer_revenue_pkr || service.customerRevenuePKR || 0, 'PKR', currency, rate);
+        expenses += convert(service.fixed_salary_pkr || service.fixedSalaryPKR || 0, 'PKR', currency, rate);
+      }
+      profit = revenue - expenses;
       months.push({ name: monthName, revenue, expenses, profit });
     }
     return months;
-  }, [projects, currency, rate]);
+  }, [projects, monthlyServices, currency, rate]);
 
   // Revenue by platform
   const platformData = useMemo(() => {

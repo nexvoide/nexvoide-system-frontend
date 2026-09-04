@@ -10,7 +10,7 @@ import ProjectActions from "../components/ProjectActions.jsx";
 import CustomerProjectForm from "../widgets/CustomerProjectForm.jsx";
 
 export default function Projects() {
-  const { currency, rate, loading, user, deleteProject } = useAppStore();
+  const { currency, rate, loading, user, allUsers, employees, deleteProject } = useAppStore();
   const projects = useFilteredProjects(); // Use filtered projects based on role
   const canCreate = useCanCreateProjects();
   const canEdit = useCanEditProjects();
@@ -32,7 +32,56 @@ export default function Projects() {
   }, []);
 
   const effectiveMode = isMobile ? 'cards' : mode;
-  const isClient = hasRole(normalizeRoles(user?.role, ''), ROLES.CLIENT);
+  const normalizedUserRoles = normalizeRoles(user?.role, '');
+  const isClient = hasRole(normalizedUserRoles, ROLES.CLIENT);
+  const showPlatform = hasRole(normalizedUserRoles, [ROLES.ADMIN, ROLES.MANAGER]);
+  const getClientDisplayName = (clientValue) => {
+    const rawValue = String(clientValue || '').trim();
+    if (!rawValue) return 'Unknown client';
+    const normalizedValue = rawValue.toLowerCase();
+    const matchingCustomer = (allUsers || []).find((candidate) =>
+      [candidate?.id, candidate?.userId, candidate?.user_id, candidate?.username, candidate?.name]
+        .some((identity) => String(identity || '').trim().toLowerCase() === normalizedValue)
+    );
+    return matchingCustomer?.name || rawValue;
+  };
+  const clientIdentities = new Set(
+    [user?.id, user?.userId, user?.user_id, user?.username, user?.name]
+      .map(value => String(value || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+  const normalizeIdentity = (value) => String(value ?? '')
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+  const currentEmployeeIdentities = new Set(
+    [user?.id, user?.userId, user?.user_id, user?.username, user?.name, user?.email]
+      .map(normalizeIdentity)
+      .filter(Boolean)
+  );
+  (employees || []).forEach((employee) => {
+    const identities = [employee?.id, employee?.userId, employee?.user_id, employee?.name, employee?.employeeName, employee?.employee_name, employee?.email]
+      .map(normalizeIdentity)
+      .filter(Boolean);
+    if (identities.some((identity) => currentEmployeeIdentities.has(identity))) {
+      identities.forEach((identity) => currentEmployeeIdentities.add(identity));
+    }
+  });
+  const isCurrentUserAssignee = (assignee) =>
+    [assignee?.employeeId, assignee?.employee_id, assignee?.id, assignee?.name]
+      .map(normalizeIdentity)
+      .filter(Boolean)
+      .some((identity) => currentEmployeeIdentities.has(identity));
+  const getAssigneePayment = (assignee, order) => assignee?.costType === 'percentage'
+    ? order * (Number(assignee?.costValue) || 0) / 100
+    : convert(assignee?.costValue || 0, 'PKR', currency, rate);
+  const getVisibleEmployeePayment = (assigned, order) => assigned
+    .filter((assignee) => canViewFinanceDetails || isCurrentUserAssignee(assignee))
+    .reduce((total, assignee) => total + getAssigneePayment(assignee, order), 0);
+  const canEditProject = (project) => canEdit || (
+    isClient && clientIdentities.has(String(project?.clientName || project?.client_name || '').trim().toLowerCase())
+  );
 
   const handleDelete = async project => {
     try {
@@ -70,12 +119,9 @@ export default function Projects() {
     return [];
   };
 
-  const currentUserIdentity = String(user?.userId || user?.user_id || user?.name || '').trim().toLowerCase();
   const showEmployeePaymentColumn = canViewFinanceDetails || (
-    currentUserIdentity !== '' && safeProjects.some((project) =>
-      ensureAssigned(project.assigned).some((assignee) =>
-        String(assignee?.name || '').trim().toLowerCase() === currentUserIdentity
-      )
+    currentEmployeeIdentities.size > 0 && safeProjects.some((project) =>
+      ensureAssigned(project.assigned).some(isCurrentUserAssignee)
     )
   );
 
@@ -175,7 +221,7 @@ export default function Projects() {
           </div>
           {canCreate && (
             isClient
-              ? <CustomerProjectForm onDone={()=>setEditing(null)} />
+              ? <CustomerProjectForm editing={editing} onDone={()=>setEditing(null)} />
               : <ProjectForm triggerLabel="New Project" editing={editing} onDone={()=>setEditing(null)} />
           )}
         </div>
@@ -185,7 +231,7 @@ export default function Projects() {
         <div className="grid grid-cols-1 gap-3 md:gap-4 mt-2 sm:mt-4 w-full max-w-full">
           {filtered.map((p, i) => (
             <motion.div key={p.id} initial={{opacity:0, y:8}} animate={{opacity:1, y:0}} transition={{delay:i*0.03}} className="w-full max-w-full">
-              <ProjectCard project={p} onEdit={canEdit ? () => setEditing(p) : null} onDelete={canDelete ? () => handleDelete(p) : null} currency={currency} rate={rate} />
+              <ProjectCard project={p} onEdit={canEditProject(p) ? () => setEditing(p) : null} onDelete={canDelete ? () => handleDelete(p) : null} currency={currency} rate={rate} showPlatform={showPlatform} clientDisplayName={getClientDisplayName(p.clientName)} />
             </motion.div>
           ))}
           {filtered.length === 0 && <div className="text-slate-500 text-center py-8 text-sm">No projects found.</div>}
@@ -197,25 +243,22 @@ export default function Projects() {
             {filtered.map((p) => {
               const order = convert(p.amount||0, p.currency, currency, rate);
               const assignedArray = ensureAssigned(p.assigned);
-              let emp=0; for(const a of assignedArray){ if(a.costType==='percentage') emp += order*(Number(a.costValue)||0)/100; else emp += convert(a.costValue||0, 'PKR', currency, rate); }
-              const profit = order-emp;
-              const isUserAssigned = user && user.userId && assignedArray.some(a => {
-                const assignedName = a.name || '';
-                const userId = user.userId || user.user_id || user.name || '';
-                return assignedName === userId || assignedName.toLowerCase() === userId.toLowerCase();
-              });
+              const totalEmployeePayment = assignedArray.reduce((total, assignee) => total + getAssigneePayment(assignee, order), 0);
+              const visibleEmployeePayment = getVisibleEmployeePayment(assignedArray, order);
+              const profit = order-totalEmployeePayment;
+              const isUserAssigned = assignedArray.some(isCurrentUserAssignee);
               const canSeeTeamPayment = canViewFinanceDetails || isUserAssigned;
               
               return (
                 <div key={p.id} className="bg-slate-800/50 rounded-xl p-3 sm:p-4 border border-slate-700/50 w-full max-w-full overflow-hidden">
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div className="flex-1 min-w-0 overflow-hidden">
-                      <div className="text-xs text-slate-400 mb-1 truncate">{p.platform} • {p.clientName}</div>
+                      <div className="text-xs text-slate-400 mb-1 truncate">{showPlatform ? `${p.platform} • ` : ''}{getClientDisplayName(p.clientName)}</div>
                       <div className="text-sm sm:text-base font-semibold text-white break-words">{p.projectName}</div>
                     </div>
                     <div className="flex flex-shrink-0 items-start gap-1.5">
                       <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-500/20 text-blue-300 text-xs whitespace-nowrap">{p.status}</span>
-                      <ProjectActions project={p} onView={() => setViewing(p)} onEdit={canEdit ? () => setEditing(p) : null} onDelete={canDelete ? () => handleDelete(p) : null} />
+                      <ProjectActions project={p} onView={() => setViewing(p)} onEdit={canEditProject(p) ? () => setEditing(p) : null} onDelete={canDelete ? () => handleDelete(p) : null} />
                     </div>
                   </div>
                   <div className="space-y-2 text-xs sm:text-sm">
@@ -232,7 +275,7 @@ export default function Projects() {
                     {canSeeTeamPayment && (
                       <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
                         <span className="text-slate-400">Employee:</span>
-                        <span className="text-slate-200 sm:text-right">{emp.toFixed(2)} {currency}</span>
+                        <span className="text-slate-200 sm:text-right">{visibleEmployeePayment.toFixed(2)} {currency}</span>
                       </div>
                     )}
                     {canViewFinanceDetails && (
@@ -261,7 +304,7 @@ export default function Projects() {
             <table className="min-w-full text-sm">
             <thead className="bg-slate-100 dark:bg-slate-900/50">
               <tr>
-                <th className="p-2 text-left text-xs md:text-sm font-semibold">Platform</th>
+                {showPlatform && <th className="p-2 text-left text-xs md:text-sm font-semibold">Platform</th>}
                 <th className="p-2 text-left text-xs md:text-sm font-semibold">Client</th>
                 <th className="p-2 text-left text-xs md:text-sm font-semibold">Project</th>
                 <th className="p-2 text-left text-xs md:text-sm font-semibold">Assigned</th>
@@ -277,15 +320,12 @@ export default function Projects() {
               {filtered.map((p) => {
                 const order = convert(p.amount||0, p.currency, currency, rate);
                 const assignedArray = ensureAssigned(p.assigned);
-                let emp=0; for(const a of assignedArray){ if(a.costType==='percentage') emp += order*(Number(a.costValue)||0)/100; else emp += convert(a.costValue||0, 'PKR', currency, rate); }
-                const profit = order-emp;
+                const totalEmployeePayment = assignedArray.reduce((total, assignee) => total + getAssigneePayment(assignee, order), 0);
+                const visibleEmployeePayment = getVisibleEmployeePayment(assignedArray, order);
+                const profit = order-totalEmployeePayment;
                 
                 // Check if current user is assigned to this project
-                const isUserAssigned = user && user.userId && assignedArray.some(a => {
-                  const assignedName = a.name || '';
-                  const userId = user.userId || user.user_id || user.name || '';
-                  return assignedName === userId || assignedName.toLowerCase() === userId.toLowerCase();
-                });
+                const isUserAssigned = assignedArray.some(isCurrentUserAssignee);
                 
                 // Show Team Payment if: user has finance details permission OR user is assigned to the project
                 const canSeeTeamPayment = canViewFinanceDetails || isUserAssigned;
@@ -326,14 +366,14 @@ export default function Projects() {
                 const fmtRemain=(ms)=>{ const s=Math.max(0,Math.floor(ms/1000)); const d=Math.floor(s/86400); const h=Math.floor((s%86400)/3600); const m=Math.floor((s%3600)/60); if(d>0) return `${d}d ${h}h`; if(h>0) return `${h}h ${m}m`; const ss=s%60; return `${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`; };
                 return (
                   <tr key={p.id} className="border-t border-slate-200/30">
-                    <td className="p-2 text-xs md:text-sm">{p.platform}</td>
-                    <td className="p-2 text-xs md:text-sm">{p.clientName}</td>
+                    {showPlatform && <td className="p-2 text-xs md:text-sm">{p.platform}</td>}
+                    <td className="p-2 text-xs md:text-sm">{getClientDisplayName(p.clientName)}</td>
                     <td className="p-2 text-xs md:text-sm font-medium">{p.projectName}</td>
                     <td className="p-2 text-xs md:text-sm">{assignedArray.map(a=>a?.name || '').filter(Boolean).join(', ') || 'Unassigned'}</td>
                     {canViewFinanceDetails && <td className="p-2">{order.toFixed(2)} {currency}</td>}
                     {showEmployeePaymentColumn && (
                       <td className="p-2">
-                        {canSeeTeamPayment ? `${emp.toFixed(2)} ${currency}` : '—'}
+                        {canSeeTeamPayment ? `${visibleEmployeePayment.toFixed(2)} ${currency}` : '—'}
                       </td>
                     )}
                     {canViewFinanceDetails && <td className="p-2">{profit.toFixed(2)} {currency}</td>}
@@ -355,7 +395,7 @@ export default function Projects() {
                       )}
                     </td>
                     <td className="p-2 text-center">
-                      <ProjectActions project={p} onView={() => setViewing(p)} onEdit={canEdit ? () => setEditing(p) : null} onDelete={canDelete ? () => handleDelete(p) : null} />
+                      <ProjectActions project={p} onView={() => setViewing(p)} onEdit={canEditProject(p) ? () => setEditing(p) : null} onDelete={canDelete ? () => handleDelete(p) : null} />
                     </td>
                   </tr>
                 );
@@ -370,7 +410,7 @@ export default function Projects() {
           <div className="max-h-[85dvh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-700 bg-[#111827] p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-xs text-slate-400">{viewing.platform} · {viewing.clientName}</div>
+                <div className="text-xs text-slate-400">{showPlatform ? `${viewing.platform} · ` : ''}{getClientDisplayName(viewing.clientName)}</div>
                 <h2 className="mt-1 text-xl font-semibold text-white">{viewing.projectName}</h2>
               </div>
               <button type="button" onClick={() => setViewing(null)} className="min-h-11 rounded-xl border border-slate-700 px-4 text-sm text-slate-200">Close</button>

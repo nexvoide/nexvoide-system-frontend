@@ -17,7 +17,11 @@ export function downloadMonthlyWorkLogPDF(employee, month, entries) {
   };
   header();
   doc.setTextColor(15,23,42); doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.text(`Employee: ${employee.name}`, margin, y);
-  doc.text(`Customer: ${employee.assignedClient || employee.assigned_client || 'Not assigned'}`, margin, y + 18);
+  const customerNames = (employee.retainerAssignments || employee.retainer_assignments || [])
+    .map(assignment => assignment.name)
+    .filter(Boolean)
+    .join(', ');
+  doc.text(`Customer: ${customerNames || employee.assignedClient || employee.assigned_client || 'Not assigned'}`, margin, y + 18);
   doc.text(`Monthly Total: ${duration(monthlyTotal)}`, margin, y + 36); y += 62;
   const columns = [0, 72, 188, 350, 425];
   const headings = ['Date', 'Project / Task', 'Activity', 'Time', 'Daily Total'];
@@ -31,9 +35,11 @@ export function downloadMonthlyWorkLogPDF(employee, month, entries) {
     const rowHeight = Math.max(32, Math.max(project.length, activity.length) * 11 + notes.length * 9 + 10);
     if (y + rowHeight > 790) { doc.addPage(); header(); drawTableHeader(); }
     doc.setTextColor(30,41,59); doc.setFont('helvetica','normal'); doc.setFontSize(8);
-    doc.text(entry.work_date, margin + 6, y + 14); doc.text(project, margin + columns[1] + 6, y + 14); doc.text(activity, margin + columns[2] + 6, y + 14);
+    const isFirstEntryForDate = entry.work_date !== previousDate;
+    if (isFirstEntryForDate) doc.text(entry.work_date, margin + 6, y + 14);
+    doc.text(project, margin + columns[1] + 6, y + 14); doc.text(activity, margin + columns[2] + 6, y + 14);
     doc.text(duration(Number(entry.minutes_spent || 0)), margin + columns[3] + 6, y + 14);
-    if (entry.work_date !== previousDate) doc.text(duration(dailyTotals[entry.work_date]), margin + columns[4] + 6, y + 14);
+    if (isFirstEntryForDate) doc.text(duration(dailyTotals[entry.work_date]), margin + columns[4] + 6, y + 14);
     if (notes.length) { doc.setTextColor(100,116,139); doc.text(notes, margin + columns[2] + 6, y + 14 + activity.length * 11); }
     doc.setDrawColor(226,232,240); doc.line(margin, y + rowHeight, margin + width, y + rowHeight); previousDate = entry.work_date; y += rowHeight;
   });

@@ -39,7 +39,7 @@ function Avatar({ name, logo }) {
   );
 }
 
-export default function ProjectCard({ project, onEdit, onDelete, currency, rate }) {
+export default function ProjectCard({ project, onEdit, onDelete, currency, rate, showPlatform = false, clientDisplayName }) {
   const { updateProject, profiles, agencies, brands, employees, user } = useAppStore();
   const canEdit = useCanEditProjects();
   const canViewFinanceDetails = useCanViewFinanceDetails();
@@ -66,16 +66,38 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
   const firstAssignee = assignedArray[0];
   const fmt = (n) => new Intl.NumberFormat('en', { maximumFractionDigits: 2 }).format(n);
   const sym = currency === 'USD' ? '$' : '₨';
+  const visibleClientName = clientDisplayName || project.clientName || 'Unknown client';
   
-  // Check if current user is assigned to this project
-  const isUserAssigned = useMemo(() => {
-    if (!user || !user.userId) return false;
-    const userId = user.userId || user.user_id || user.name || '';
-    return assignedArray.some(a => {
-      const assignedName = a.name || '';
-      return assignedName === userId || assignedName.toLowerCase() === userId.toLowerCase();
-    });
-  }, [assignedArray, user]);
+  const normalizeIdentity = (value) => String(value ?? '')
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+  const currentEmployeeIdentities = new Set(
+    [user?.id, user?.userId, user?.user_id, user?.username, user?.name, user?.email]
+      .map(normalizeIdentity)
+      .filter(Boolean)
+  );
+  (employees || []).forEach((employee) => {
+    const identities = [employee?.id, employee?.userId, employee?.user_id, employee?.name, employee?.employeeName, employee?.employee_name, employee?.email]
+      .map(normalizeIdentity)
+      .filter(Boolean);
+    if (identities.some((identity) => currentEmployeeIdentities.has(identity))) {
+      identities.forEach((identity) => currentEmployeeIdentities.add(identity));
+    }
+  });
+  const isCurrentUserAssignee = (assignee) =>
+    [assignee?.employeeId, assignee?.employee_id, assignee?.id, assignee?.name]
+      .map(normalizeIdentity)
+      .filter(Boolean)
+      .some((identity) => currentEmployeeIdentities.has(identity));
+  const isUserAssigned = assignedArray.some(isCurrentUserAssignee);
+  const ownEmployeePayment = assignedArray
+    .filter(isCurrentUserAssignee)
+    .reduce((total, assignee) => total + (assignee.costType === 'percentage'
+      ? order * (Number(assignee.costValue) || 0) / 100
+      : convert(assignee.costValue || 0, 'PKR', currency, rate)), 0);
+  const visibleEmployeePayment = canViewFinanceDetails ? emp : ownEmployeePayment;
   
   // Show Team Payment if: user has finance details permission (Admin/Manager) OR user is assigned to the project
   const canSeeTeamPayment = canViewFinanceDetails || isUserAssigned;
@@ -88,14 +110,12 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
   // - Admin / finance roles: canViewFinanceDetails === true → see all
   // - Employee: can see ONLY their own cost line
   // - Team Lead: cannot see any assignee cost unless also directly assigned as employee
-  const getCanSeeAssigneeCost = (assigneeName) => {
-    if (!user || !assigneeName) return false;
-    const currentId = (user.userId || user.user_id || user.name || '').trim();
-    if (!currentId) return false;
+  const getCanSeeAssigneeCost = (assignee) => {
+    if (!user || !assignee) return false;
     // Finance roles (admin) can see all costs
     if (canViewFinanceDetails) return true;
     // Otherwise, user can only see their own line
-    return assigneeName.toLowerCase() === currentId.toLowerCase();
+    return isCurrentUserAssignee(assignee);
   };
 
   // Get logo from profile/agency/brand
@@ -201,12 +221,12 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
           <div className="flex items-start justify-between gap-2 sm:gap-3 mb-3">
             <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
               <div className="flex-shrink-0">
-                <Avatar name={project.clientName} logo={clientLogo} />
+                <Avatar name={visibleClientName} logo={clientLogo} />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs text-slate-400 mb-1 truncate">{project.platform}</div>
+                {showPlatform && <div className="text-xs text-slate-400 mb-1 truncate">{project.platform}</div>}
                 <div className="text-sm sm:text-base font-bold text-white mb-1 break-words">{project.projectName}</div>
-                <div className="text-xs text-slate-400 truncate">{project.clientName}</div>
+                <div className="text-xs text-slate-400 truncate">{visibleClientName}</div>
               </div>
             </div>
             <div className="flex flex-shrink-0 flex-col items-end gap-1.5">
@@ -258,7 +278,7 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
             {canSeeTeamPayment && (
               <div className="p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/50">
                 <div className="text-[10px] text-slate-400 mb-1">Team</div>
-                <div className="text-sm font-bold text-slate-200">{sym}{fmt(emp)}</div>
+                <div className="text-sm font-bold text-slate-200">{sym}{fmt(visibleEmployeePayment)}</div>
               </div>
             )}
             {canViewFinanceDetails && (
@@ -320,7 +340,7 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
                             <Avatar name={a.name} logo={employee?.avatar} />
                             <div className="flex-1">
                               <div className="text-slate-200 font-medium">{a.name}</div>
-                              {getCanSeeAssigneeCost(a.name) && (
+                              {getCanSeeAssigneeCost(a) && (
                                 <div className="text-slate-400">
                                   {a.costType === "percentage" ? `${a.costValue}%` : `${a.costValue} PKR`}
                                 </div>
@@ -390,7 +410,7 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
           <div className="flex items-start gap-3 flex-1 min-w-0">
             <Avatar name={project.clientName} logo={clientLogo} />
             <div className="flex-1 min-w-0">
-              <div className="text-xs text-slate-400 mb-1">{project.platform} • {project.clientName}</div>
+              <div className="text-xs text-slate-400 mb-1">{showPlatform ? `${project.platform} • ` : ''}{visibleClientName}</div>
               <div className="text-lg font-semibold tracking-tight text-slate-100 mb-2">{project.projectName}</div>
               <div className="flex-shrink-0">
                 <StatusPill status={project.status} />
@@ -409,7 +429,7 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
           {canSeeTeamPayment && (
           <div className="min-w-0 rounded-2xl bg-slate-900/40 border border-slate-700/50 px-4 py-3">
             <div className="text-xs text-slate-400">Team Payment</div>
-            <div className="mt-1 text-lg font-bold text-slate-100 truncate">{sym}{fmt(emp)} <span className="text-xs text-slate-400">{currency}</span></div>
+            <div className="mt-1 text-lg font-bold text-slate-100 truncate">{sym}{fmt(visibleEmployeePayment)} <span className="text-xs text-slate-400">{currency}</span></div>
           </div>
           )}
           {canViewFinanceDetails && (
@@ -523,7 +543,7 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
                         <Avatar name={a.name} logo={employee?.avatar} />
                         <div className="flex-1">
                           <div className="text-slate-200 font-medium">{a.name}</div>
-                          {getCanSeeAssigneeCost(a.name) && (
+                          {getCanSeeAssigneeCost(a) && (
                             <div className="text-slate-400">
                               {a.costType === "percentage" ? `${a.costValue}%` : `${a.costValue} PKR`}
                             </div>
