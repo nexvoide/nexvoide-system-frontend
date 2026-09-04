@@ -4,6 +4,7 @@ import { useAppStore, convert } from "../stores/appStore.js";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useCanEditProjects, useCanDeleteProjects, useCanViewFinanceDetails } from "../hooks/useRoleFilter.js";
 import { ROLES, normalizeRoles, hasRole } from "../utils/permissions.js";
+import ProjectActions from "../components/ProjectActions.jsx";
 
 function StatusPill({ status }) {
   const color = useMemo(() => {
@@ -39,8 +40,8 @@ function Avatar({ name, logo }) {
   );
 }
 
-export default function ProjectCard({ project, onEdit, currency, rate }) {
-  const { deleteProject, updateProject, profiles, agencies, brands, employees, user } = useAppStore();
+export default function ProjectCard({ project, onEdit, onDelete, currency, rate }) {
+  const { updateProject, profiles, agencies, brands, employees, user } = useAppStore();
   const canEdit = useCanEditProjects();
   const canDelete = useCanDeleteProjects();
   const canViewFinanceDetails = useCanViewFinanceDetails();
@@ -206,8 +207,9 @@ export default function ProjectCard({ project, onEdit, currency, rate }) {
                 <div className="text-xs text-slate-400 truncate">{project.clientName}</div>
               </div>
             </div>
-            <div className="flex-shrink-0">
+            <div className="flex flex-shrink-0 items-start gap-1.5">
               <StatusPill status={project.status} />
+              {(onEdit || onDelete) && <ProjectActions project={project} onEdit={onEdit} onDelete={onDelete} />}
             </div>
           </div>
           
@@ -402,6 +404,7 @@ export default function ProjectCard({ project, onEdit, currency, rate }) {
                 <StatusPill status={project.status} />
               </div>
             </div>
+            {(onEdit || onDelete) && <ProjectActions project={project} onEdit={onEdit} onDelete={onDelete} />}
           </div>
         </div>
         <div className={`grid gap-4 mt-5 ${canViewFinanceDetails ? 'grid-cols-2 lg:grid-cols-4' : (canSeeTeamPayment ? 'grid-cols-2' : 'grid-cols-1')}`}>
@@ -511,21 +514,6 @@ export default function ProjectCard({ project, onEdit, currency, rate }) {
               <option>Cancel</option>
             </select>
           )}
-          {canEdit && onEdit && (
-            <button className="btn secondary small text-sm py-2 px-3" onClick={onEdit}>Edit</button>
-          )}
-          {canDelete && (
-            <button className="btn danger small text-sm py-2 px-3" onClick={async ()=>{
-              if (confirm('Are you sure you want to delete this project?')) {
-                try {
-                  await deleteProject(project.id);
-                } catch (error) {
-                  console.error('Failed to delete project:', error);
-                  alert('Failed to delete project. Please try again.');
-                }
-              }
-            }}>Delete</button>
-          )}
         </div>
       </div>
       {expanded && (
@@ -611,5 +599,4 @@ export default function ProjectCard({ project, onEdit, currency, rate }) {
     </motion.div>
   );
 }
-
 

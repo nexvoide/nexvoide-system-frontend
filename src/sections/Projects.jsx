@@ -6,9 +6,10 @@ import ProjectForm from "../widgets/ProjectForm.jsx";
 import ProjectCard from "../widgets/ProjectCard.jsx";
 import { useFilteredProjects, useCanCreateProjects, useCanEditProjects, useCanDeleteProjects, useCanViewFinanceDetails } from "../hooks/useRoleFilter.js";
 import { ROLES, normalizeRoles, hasRole } from "../utils/permissions.js";
+import ProjectActions from "../components/ProjectActions.jsx";
 
 export default function Projects() {
-  const { currency, rate, loading, user } = useAppStore();
+  const { currency, rate, loading, user, deleteProject } = useAppStore();
   const projects = useFilteredProjects(); // Use filtered projects based on role
   const canCreate = useCanCreateProjects();
   const canEdit = useCanEditProjects();
@@ -18,6 +19,28 @@ export default function Projects() {
   const [tab, setTab] = useState("In Progress");
   const [editing, setEditing] = useState(null);
   const [mode, setMode] = useState("table");
+  const [viewing, setViewing] = useState(null);
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)');
+    const update = event => setIsMobile(event.matches);
+    setIsMobile(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  const effectiveMode = isMobile ? 'cards' : mode;
+
+  const handleDelete = async project => {
+    try {
+      await deleteProject(project.id);
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      window.alert('Failed to delete project. Please try again.');
+      throw error;
+    }
+  };
 
   // Ensure projects is always an array
   const safeProjects = Array.isArray(projects) ? projects : [];
@@ -111,7 +134,7 @@ export default function Projects() {
           value={query}
           onChange={(e)=>setQuery(e.target.value)}
         />
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-hide w-full min-w-0 -mx-2.5 sm:-mx-3 px-2.5 sm:px-3">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-1.5 md:flex-1 md:flex-nowrap">
           {['All','In Progress','Revising','Completed','Cancel'].map(t => (
             <button
               key={t}
@@ -121,31 +144,35 @@ export default function Projects() {
           ))}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <button
-            className="glass h-10 w-10 md:h-9 md:w-9 rounded-xl grid place-items-center text-white touch-manipulation"
-            onClick={() => setMode('table')}
-            title="Table view"
-          >
-            <Table size={16}/>
-          </button>
-          <button
-            className="glass h-10 w-10 md:h-9 md:w-9 rounded-xl grid place-items-center text-white touch-manipulation"
-            onClick={() => setMode('cards')}
-            title="Card view"
-          >
-            <LayoutGrid size={16}/>
-          </button>
+          <div className="hidden items-center gap-1.5 md:flex">
+            <button
+              className={`glass h-9 w-9 rounded-xl grid place-items-center text-white touch-manipulation ${mode === 'table' ? 'ring-2 ring-blue-400' : ''}`}
+              onClick={() => setMode('table')}
+              title="Table view"
+              aria-label="Show projects as a table"
+            >
+              <Table size={16}/>
+            </button>
+            <button
+              className={`glass h-9 w-9 rounded-xl grid place-items-center text-white touch-manipulation ${mode === 'cards' ? 'ring-2 ring-blue-400' : ''}`}
+              onClick={() => setMode('cards')}
+              title="Card view"
+              aria-label="Show projects as cards"
+            >
+              <LayoutGrid size={16}/>
+            </button>
+          </div>
           {canCreate && (
             <ProjectForm triggerLabel="New Project" editing={editing} onDone={()=>setEditing(null)} />
           )}
         </div>
       </div>
 
-      {mode === 'cards' ? (
+      {effectiveMode === 'cards' ? (
         <div className="grid grid-cols-1 gap-3 md:gap-4 mt-2 sm:mt-4 w-full max-w-full">
           {filtered.map((p, i) => (
             <motion.div key={p.id} initial={{opacity:0, y:8}} animate={{opacity:1, y:0}} transition={{delay:i*0.03}} className="w-full max-w-full">
-              <ProjectCard project={p} onEdit={canEdit ? () => setEditing(p) : null} currency={currency} rate={rate} />
+              <ProjectCard project={p} onEdit={canEdit ? () => setEditing(p) : null} onDelete={canDelete ? () => handleDelete(p) : null} currency={currency} rate={rate} />
             </motion.div>
           ))}
           {filtered.length === 0 && <div className="text-slate-500 text-center py-8 text-sm">No projects found.</div>}
@@ -173,7 +200,10 @@ export default function Projects() {
                       <div className="text-xs text-slate-400 mb-1 truncate">{p.platform} • {p.clientName}</div>
                       <div className="text-sm sm:text-base font-semibold text-white break-words">{p.projectName}</div>
                     </div>
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-500/20 text-blue-300 text-xs flex-shrink-0 whitespace-nowrap">{p.status}</span>
+                    <div className="flex flex-shrink-0 items-start gap-1.5">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-500/20 text-blue-300 text-xs whitespace-nowrap">{p.status}</span>
+                      <ProjectActions project={p} onView={() => setViewing(p)} onEdit={canEdit ? () => setEditing(p) : null} onDelete={canDelete ? () => handleDelete(p) : null} />
+                    </div>
                   </div>
                   <div className="space-y-2 text-xs sm:text-sm">
                     <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
@@ -205,16 +235,6 @@ export default function Projects() {
                       </div>
                     )}
                   </div>
-                  {canEdit && (
-                    <div className="mt-3 pt-3 border-t border-slate-700/50">
-                      <button 
-                        className="btn btn-secondary w-full text-sm py-2.5 min-h-[44px] touch-manipulation" 
-                        onClick={()=>setEditing(p)}
-                      >
-                        Edit Project
-                      </button>
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -237,7 +257,7 @@ export default function Projects() {
                 {canViewFinanceDetails && <th className="p-2 text-left text-xs md:text-sm font-semibold">Profit</th>}
                 <th className="p-2 text-left text-xs md:text-sm font-semibold">Status</th>
                 <th className="p-2 text-left text-xs md:text-sm font-semibold">Deadline</th>
-                <th className="p-2"></th>
+                <th className="w-14 p-2 text-center text-xs md:text-sm font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -317,10 +337,8 @@ export default function Projects() {
                         <div className="text-[10px] text-red-400 mt-1">Overdue</div>
                       )}
                     </td>
-                    <td className="p-2 text-right">
-                      {canEdit && (
-                        <button className="btn btn-secondary text-xs md:text-sm px-2 md:px-4 py-1.5 md:py-2" onClick={()=>setEditing(p)}>Edit</button>
-                      )}
+                    <td className="p-2 text-center">
+                      <ProjectActions project={p} onView={() => setViewing(p)} onEdit={canEdit ? () => setEditing(p) : null} onDelete={canDelete ? () => handleDelete(p) : null} />
                     </td>
                   </tr>
                 );
@@ -330,8 +348,25 @@ export default function Projects() {
           </div>
         </div>
       )}
+      {viewing && (
+        <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">
+          <div className="max-h-[85dvh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-700 bg-[#111827] p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-xs text-slate-400">{viewing.platform} · {viewing.clientName}</div>
+                <h2 className="mt-1 text-xl font-semibold text-white">{viewing.projectName}</h2>
+              </div>
+              <button type="button" onClick={() => setViewing(null)} className="min-h-11 rounded-xl border border-slate-700 px-4 text-sm text-slate-200">Close</button>
+            </div>
+            <dl className="mt-5 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+              <div className="rounded-xl bg-slate-900/70 p-3"><dt className="text-slate-500">Status</dt><dd className="mt-1 text-slate-100">{viewing.status}</dd></div>
+              <div className="rounded-xl bg-slate-900/70 p-3"><dt className="text-slate-500">Deadline</dt><dd className="mt-1 text-slate-100">{viewing.deadline ? new Date(viewing.deadline).toLocaleString() : 'Not set'}</dd></div>
+              <div className="rounded-xl bg-slate-900/70 p-3"><dt className="text-slate-500">Service</dt><dd className="mt-1 text-slate-100">{viewing.service || 'Not set'}</dd></div>
+              <div className="rounded-xl bg-slate-900/70 p-3"><dt className="text-slate-500">Assigned</dt><dd className="mt-1 text-slate-100">{ensureAssigned(viewing.assigned).map(item => item.name).filter(Boolean).join(', ') || 'Unassigned'}</dd></div>
+            </dl>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-
