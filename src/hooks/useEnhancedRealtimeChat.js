@@ -122,6 +122,7 @@ export function useEnhancedRealtimeChat({
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [deliveryStatuses, setDeliveryStatuses] = useState({}); // messageId -> status
+  const [onlineUsers, setOnlineUsers] = useState([]);
 
   // Re-resolve avatars when allUsers or employees change
   useEffect(() => {
@@ -281,13 +282,33 @@ export function useEnhancedRealtimeChat({
 
     const newChannel = supabase.channel(uniqueChannelName, {
       config: {
-        presence: { key: '' }
+        presence: { key: String(userId || crypto.randomUUID()) }
       }
     });
+
+    const syncOnlineUsers = () => {
+      const presenceState = newChannel.presenceState();
+      const usersById = new Map();
+
+      Object.values(presenceState).flat().forEach((presence) => {
+        if (!presence?.userId) return;
+        usersById.set(String(presence.userId), {
+          id: presence.userId,
+          name: presence.name || 'User',
+          avatar: presence.avatar || null,
+          onlineAt: presence.onlineAt,
+        });
+      });
+
+      setOnlineUsers(Array.from(usersById.values()));
+    };
 
     // Authenticated Postgres changes remain the source of truth. Once 005 is
     // enabled, message RLS filters these events by canonical channel access.
     newChannel
+      .on('presence', { event: 'sync' }, syncOnlineUsers)
+      .on('presence', { event: 'join' }, syncOnlineUsers)
+      .on('presence', { event: 'leave' }, syncOnlineUsers)
       .on(
         "postgres_changes",
         {
@@ -391,6 +412,12 @@ export function useEnhancedRealtimeChat({
         if (status === "SUBSCRIBED") {
           setIsConnected(true);
           console.log("✅ Successfully subscribed to channel:", uniqueChannelName);
+          newChannel.track({
+            userId,
+            name: username || 'User',
+            avatar: userAvatar || resolveUserAvatar(userId, username, allUsers, employees),
+            onlineAt: new Date().toISOString(),
+          }).catch((trackError) => console.warn('Failed to track chat presence:', trackError));
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           setIsConnected(false);
           console.error("❌ Channel error or closed:", status);
@@ -414,9 +441,10 @@ export function useEnhancedRealtimeChat({
       if (channelRef.current === newChannel) {
         channelRef.current = null;
       }
+      setOnlineUsers([]);
       supabase.removeChannel(newChannel).catch(err => console.warn("Error removing channel:", err));
     };
-  }, [roomName, userId]);
+  }, [roomName, userId, username, userAvatar, allUsers, employees]);
 
   const sendMessage = useCallback(
     async (content, replyToId = null, attachments = []) => {
@@ -735,5 +763,6 @@ export function useEnhancedRealtimeChat({
     markAsRead,
     updateMessage,
     deliveryStatuses,
+    onlineUsers,
   };
 }

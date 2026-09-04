@@ -287,7 +287,7 @@ function Shell() {
           {tab === "finance" && <Finance />}
           {tab === "setup" && <Setup />}
           {tab === "activity" && <ActivityLogs />}
-          {tab === "chat" && <Chat />}
+          {tab === "chat" && <Chat onBack={() => setTab("dashboard")} />}
           {tab === "settings" && <SettingsSection />}
           {tab === "users" && <UserManagement />}
           {tab === "archives" && <MonthlyArchives />}

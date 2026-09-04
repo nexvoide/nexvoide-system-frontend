@@ -8,23 +8,24 @@ export default function ConnectivityStatus() {
   const [showOfflineNotice, setShowOfflineNotice] = useState(false);
   const [showSlowNotice, setShowSlowNotice] = useState(false);
 
-  // Show/hide notices based on status
+  // Show connection notices when status changes.
   useEffect(() => {
     if (!isOnline) {
       setShowOfflineNotice(true);
       setShowSlowNotice(false);
-    } else if (status === CONNECTION_STATUS.SLOW) {
-      setShowOfflineNotice(false);
-      setShowSlowNotice(true);
-    } else {
-      setShowOfflineNotice(false);
-      // Auto-dismiss slow notice after 5 seconds if connection improves
-      if (showSlowNotice) {
-        const timer = setTimeout(() => setShowSlowNotice(false), 5000);
-        return () => clearTimeout(timer);
-      }
+      return undefined;
     }
-  }, [isOnline, status, showSlowNotice]);
+
+    setShowOfflineNotice(false);
+    if (status !== CONNECTION_STATUS.SLOW) {
+      setShowSlowNotice(false);
+      return undefined;
+    }
+
+    setShowSlowNotice(true);
+    const timer = window.setTimeout(() => setShowSlowNotice(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, [isOnline, status]);
 
   // Render WiFi signal bars (like mobile signal indicator)
   const renderSignalBars = () => {
@@ -130,25 +131,17 @@ export default function ConnectivityStatus() {
       <AnimatePresence>
         {showSlowNotice && (
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={{ opacity: 0, y: -8, scale: 0.96 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 max-w-md"
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="fixed top-3 right-3 sm:top-4 sm:right-4 z-50 max-w-[calc(100vw-24px)]"
           >
-            <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-yellow-500 text-white shadow-2xl border-2 border-yellow-600">
-              <Wifi size={20} className="flex-shrink-0" />
-              <div className="flex-1">
-                <div className="font-semibold">Slow Internet Connection</div>
-                <div className="text-xs text-yellow-100">
-                  {latency ? `Latency: ${Math.round(latency)}ms` : 'Connection is slower than usual'}
-                </div>
-              </div>
-              <button
-                onClick={() => setShowSlowNotice(false)}
-                className="flex-shrink-0 hover:bg-yellow-600 rounded p-1 transition-colors"
-              >
-                <X size={16} />
-              </button>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/95 text-slate-950 shadow-lg border border-amber-300/40">
+              <Wifi size={14} className="flex-shrink-0" />
+              <span className="text-xs font-semibold whitespace-nowrap">
+                Slow connection{latency ? ` · ${Math.round(latency)}ms` : ''}
+              </span>
             </div>
           </motion.div>
         )}
@@ -156,4 +149,3 @@ export default function ConnectivityStatus() {
     </>
   );
 }
-

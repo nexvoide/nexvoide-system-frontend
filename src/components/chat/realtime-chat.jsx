@@ -48,7 +48,7 @@ export const RealtimeChat = ({
     };
   }, []);
 
-  const { messages, sendMessage, isConnected, isLoading, markAsRead, updateMessage } = useEnhancedRealtimeChat({
+  const { messages, sendMessage, isConnected, isLoading, markAsRead, updateMessage, onlineUsers } = useEnhancedRealtimeChat({
     roomName,
     username: user?.name || "Anonymous",
     userId: user?.id,
@@ -176,7 +176,38 @@ export const RealtimeChat = ({
   return (
     <div className='relative flex flex-col flex-1 min-h-0 h-0 w-full overflow-hidden antialiased'>
       <div className='hidden md:flex h-10 flex-none items-center justify-between px-6 border-b border-slate-400/10 bg-[#080d18] text-xs text-[#64748b]'>
-        <span className='flex items-center gap-2'><i className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-[#22c55e]' : 'bg-amber-400'}`} />{isConnected ? 'Live' : 'Reconnecting'} • {allUsers.length} members</span>
+        <div className='flex items-center gap-3 min-w-0'>
+          <span className='flex items-center gap-2 flex-shrink-0'>
+            <i className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-[#22c55e]' : 'bg-amber-400'}`} />
+            {isConnected ? 'Live' : 'Reconnecting'}
+          </span>
+          {onlineUsers.length > 0 && (
+            <div className='flex items-center' aria-label={`${onlineUsers.length} online`}>
+              {onlineUsers.slice(0, 5).map((onlineUser, index) => (
+                <div
+                  key={onlineUser.id}
+                  className={`relative w-7 h-7 rounded-full border-2 border-[#080d18] bg-[#1e293b] overflow-visible ${index > 0 ? '-ml-2' : ''}`}
+                  title={`${onlineUser.name} · Online`}
+                >
+                  {onlineUser.avatar ? (
+                    <img src={onlineUser.avatar} alt={onlineUser.name} className='w-full h-full rounded-full object-cover' />
+                  ) : (
+                    <span className='w-full h-full rounded-full flex items-center justify-center text-[10px] font-semibold text-slate-200'>
+                      {onlineUser.name.trim().charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  <i className='absolute right-[-1px] bottom-[-1px] w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-[#080d18]' />
+                </div>
+              ))}
+              {onlineUsers.length > 5 && (
+                <span className='-ml-2 w-7 h-7 rounded-full border-2 border-[#080d18] bg-[#1e293b] flex items-center justify-center text-[9px] text-slate-300'>
+                  +{onlineUsers.length - 5}
+                </span>
+              )}
+              <span className='ml-2 text-[#64748b]'>{onlineUsers.length} online</span>
+            </div>
+          )}
+        </div>
         <span>Files expire after 7 days • Max 10 MB • No videos</span>
       </div>
       {/* Connection Status Indicator */}

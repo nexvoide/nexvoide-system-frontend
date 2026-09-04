@@ -633,7 +633,7 @@ export default function MessageInput({
                 ? `Replying to ${replyTo.user.name}...`
                 : editingMessage
                 ? "Editing message..."
-                : "Type a message... (use @ to mention)"
+                : "Type a message"
             }
             rows={1}
             disabled={isDisabled}

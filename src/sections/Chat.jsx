@@ -10,7 +10,7 @@ import ChannelDialog from '../components/chat/ChannelDialog.jsx';
 import UserManagementDialog from '../components/chat/UserManagementDialog.jsx';
 import SectionDialog from '../components/chat/SectionDialog.jsx';
 
-export default function Chat() {
+export default function Chat({ onBack }) {
   const { user, userRole, allUsers = [] } = useAppStore();
   const {
     channels,
@@ -75,6 +75,31 @@ export default function Chat() {
 
   const [showSidebar, setShowSidebar] = useState(false);
 
+  useEffect(() => {
+    if (!window.matchMedia('(max-width: 767px)').matches) return undefined;
+
+    if (!window.history.state?.nexvoideChat) {
+      const chatHistoryState = { ...window.history.state, nexvoideChat: true };
+      window.history.pushState(chatHistoryState, '', window.location.href);
+    }
+
+    const handleBrowserBack = () => {
+      setShowSidebar(false);
+      onBack?.();
+    };
+
+    window.addEventListener('popstate', handleBrowserBack);
+    return () => window.removeEventListener('popstate', handleBrowserBack);
+  }, [onBack]);
+
+  const handleBack = () => {
+    if (window.matchMedia('(max-width: 767px)').matches && window.history.state?.nexvoideChat) {
+      window.history.back();
+      return;
+    }
+    onBack?.();
+  };
+
   return (
     <div className="chat-shell flex flex-col md:flex-row h-[calc(100dvh-92px)] md:h-[calc(100vh-104px)] min-h-0 bg-[#090e1a] text-white rounded-none md:rounded-[20px] overflow-hidden relative border border-[#1b283d]/80">
 
@@ -137,6 +162,7 @@ export default function Chat() {
               setShowCreateChannel(true);
             }}
             onOpenSidebar={() => setShowSidebar(true)}
+            onBack={handleBack}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center">
