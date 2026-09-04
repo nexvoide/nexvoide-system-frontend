@@ -2,8 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useAppStore, convert } from "../stores/appStore.js";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { useCanEditProjects, useCanDeleteProjects, useCanViewFinanceDetails } from "../hooks/useRoleFilter.js";
-import { ROLES, normalizeRoles, hasRole } from "../utils/permissions.js";
+import { useCanEditProjects, useCanViewFinanceDetails } from "../hooks/useRoleFilter.js";
 import ProjectActions from "../components/ProjectActions.jsx";
 
 function StatusPill({ status }) {
@@ -16,7 +15,7 @@ function StatusPill({ status }) {
       default: return "bg-amber-500/15 text-amber-300 border-amber-500/30";
     }
   }, [status]);
-  return <span className={`inline-flex items-center px-3 h-9 rounded-2xl text-sm border shadow-sm ${color}`}>{status}</span>;
+  return <span className={`inline-flex max-w-full items-center whitespace-nowrap rounded-2xl border px-2.5 h-8 text-xs sm:px-3 sm:h-9 sm:text-sm shadow-sm ${color}`}>{status}</span>;
 }
 
 function Avatar({ name, logo }) {
@@ -34,7 +33,7 @@ function Avatar({ name, logo }) {
     .join("")
     .toUpperCase();
   return (
-    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-700 text-slate-200 text-xs font-semibold">
+    <div className="flex items-center justify-center w-12 h-12 rounded-full bg-slate-700 border border-slate-600 text-slate-200 text-sm font-semibold flex-shrink-0">
       {initials || "?"}
     </div>
   );
@@ -43,7 +42,6 @@ function Avatar({ name, logo }) {
 export default function ProjectCard({ project, onEdit, onDelete, currency, rate }) {
   const { updateProject, profiles, agencies, brands, employees, user } = useAppStore();
   const canEdit = useCanEditProjects();
-  const canDelete = useCanDeleteProjects();
   const canViewFinanceDetails = useCanViewFinanceDetails();
   
   // Helper to ensure assigned is always an array
@@ -81,6 +79,10 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
   
   // Show Team Payment if: user has finance details permission (Admin/Manager) OR user is assigned to the project
   const canSeeTeamPayment = canViewFinanceDetails || isUserAssigned;
+  const visibleMobileMetricCount =
+    (canViewFinanceDetails ? 2 : 0) +
+    (canSeeTeamPayment ? 1 : 0) +
+    (firstAssignee ? 1 : 0);
 
   // Helper: who can see individual assignee cost?
   // - Admin / finance roles: canViewFinanceDetails === true → see all
@@ -190,7 +192,7 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
     <motion.div 
       whileHover={{ y: -2 }} 
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-      className={`card w-full max-w-full overflow-hidden ${isOverdue ? 'ring-2 ring-red-500 animate-pulse' : ''}`}
+      className={`card !p-0 w-full max-w-full overflow-hidden ${isOverdue ? 'ring-2 ring-red-500 animate-pulse' : ''}`}
     >
       {/* Mobile Design - Different Layout */}
       <div className="md:hidden">
@@ -207,9 +209,9 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
                 <div className="text-xs text-slate-400 truncate">{project.clientName}</div>
               </div>
             </div>
-            <div className="flex flex-shrink-0 items-start gap-1.5">
-              <StatusPill status={project.status} />
+            <div className="flex flex-shrink-0 flex-col items-end gap-1.5">
               {(onEdit || onDelete) && <ProjectActions project={project} onEdit={onEdit} onDelete={onDelete} />}
+              <StatusPill status={project.status} />
             </div>
           </div>
           
@@ -246,7 +248,7 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
 
         {/* Financial Info - Compact Grid */}
         <div className="p-3 sm:p-4 pt-3">
-          <div className="grid grid-cols-2 gap-2 sm:gap-2.5 mb-3">
+          <div className={`grid gap-2 sm:gap-2.5 mb-3 ${visibleMobileMetricCount === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
             {canViewFinanceDetails && (
               <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
                 <div className="text-[10px] text-blue-300/80 mb-1">Order</div>
@@ -273,20 +275,17 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
             )}
           </div>
 
-          {/* Action Buttons - Full Width on Mobile */}
-          <div className="flex flex-col gap-2 mt-3">
+          <div className="flex items-center justify-between gap-2 mt-3">
+            <button 
+              className="btn btn-secondary px-4 h-11 text-sm touch-manipulation min-h-[44px] flex items-center justify-center gap-2" 
+              onClick={()=>setExpanded(v=>!v)}
+            >
+              {expanded ? <ChevronUp size={18}/> : <ChevronDown size={18}/>}
+              <span>Details</span>
+            </button>
             {canEdit && (
-              <button 
-                className="w-full btn btn-primary py-3 text-sm font-semibold touch-manipulation min-h-[44px]"
-                onClick={onEdit}
-              >
-                Edit Project
-              </button>
-            )}
-            <div className="flex gap-2">
-              {canEdit && (
                 <select 
-                  className="flex-1 glass px-3 h-11 rounded-xl text-sm touch-manipulation min-h-[44px]" 
+                  className="glass min-w-0 max-w-[170px] flex-1 px-3 h-11 rounded-xl text-sm touch-manipulation min-h-[44px]" 
                   value={project.status === 'Revision' ? 'Revising' : project.status === 'Cancelled' ? 'Cancel' : project.status} 
                   onChange={async (e) => {
                     try {
@@ -302,14 +301,7 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
                   <option>Revising</option>
                   <option>Cancel</option>
                 </select>
-              )}
-              <button 
-                className="btn btn-secondary px-4 h-11 text-sm touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" 
-                onClick={()=>setExpanded(v=>!v)}
-              >
-                {expanded ? <ChevronUp size={18}/> : <ChevronDown size={18}/>}
-              </button>
-            </div>
+            )}
           </div>
 
           {/* Expanded Details - Mobile */}
@@ -482,7 +474,7 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
             )}
           </div>
         )}
-        <div className="mt-5 border-t border-slate-700/40 pt-4 flex items-center justify-between text-sm min-w-0">
+        <div className="mt-5 border-t border-slate-700/40 pt-4 flex flex-wrap items-center justify-between gap-3 text-sm min-w-0">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             {firstAssignee && (() => {
               const employee = employees.find(e => e.name === firstAssignee.name);
@@ -491,7 +483,7 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
             {!firstAssignee && <Avatar name="—" />}
             <div className="text-slate-300 truncate">Assigned to <span className="font-medium text-slate-100">{firstAssignee?.name || '—'}</span></div>
           </div>
-          <div className="flex gap-4 text-slate-400 text-xs">
+          <div className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-slate-400 text-xs">
             <div>Start: <span className="text-slate-200">{project.startDate || '-'}</span></div>
             <div>End: <span className="text-slate-200">{project.endDate || '-'}</span></div>
           </div>
@@ -517,7 +509,7 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
         </div>
       </div>
       {expanded && (
-        <div className={`mt-3 border-t border-slate-700/40 pt-3 ${expanded ? 'block' : 'hidden'}`}>
+        <div className={`hidden md:block mx-5 mb-5 mt-0 border-t border-slate-700/40 pt-3`}>
           <div className="text-xs text-slate-400 mb-2 font-medium">Additional Details</div>
           <div className="space-y-2 mb-3">
             {assignedArray.length > 0 && (
@@ -599,4 +591,3 @@ export default function ProjectCard({ project, onEdit, onDelete, currency, rate 
     </motion.div>
   );
 }
-

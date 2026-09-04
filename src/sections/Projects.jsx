@@ -146,7 +146,7 @@ export default function Projects() {
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <div className="hidden items-center gap-1.5 md:flex">
             <button
-              className={`glass h-9 w-9 rounded-xl grid place-items-center text-white touch-manipulation ${mode === 'table' ? 'ring-2 ring-blue-400' : ''}`}
+              className="glass h-9 w-9 rounded-xl grid place-items-center text-white touch-manipulation"
               onClick={() => setMode('table')}
               title="Table view"
               aria-label="Show projects as a table"
@@ -154,7 +154,7 @@ export default function Projects() {
               <Table size={16}/>
             </button>
             <button
-              className={`glass h-9 w-9 rounded-xl grid place-items-center text-white touch-manipulation ${mode === 'cards' ? 'ring-2 ring-blue-400' : ''}`}
+              className="glass h-9 w-9 rounded-xl grid place-items-center text-white touch-manipulation"
               onClick={() => setMode('cards')}
               title="Card view"
               aria-label="Show projects as cards"

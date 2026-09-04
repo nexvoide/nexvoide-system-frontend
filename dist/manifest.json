@@ -4,17 +4,11 @@
   "description": "Complete project management and team collaboration platform",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#060912",
+  "background_color": "#0a0a0a",
   "theme_color": "#010333",
   "orientation": "portrait-primary",
   "scope": "/",
   "icons": [
-    {
-      "src": "/icon-splash-1024.png",
-      "sizes": "1254x1254",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
