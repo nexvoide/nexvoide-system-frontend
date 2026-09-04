@@ -36,31 +36,14 @@ export default function Chat() {
   const isAdmin = normalizedRole === ROLES.ADMIN;
   const hasManagementAccess = isAdmin || normalizedRole === ROLES.MANAGER;
   const userIdentitySet = new Set(
-    [user?.id, user?.username, user?.userId, user?.user_id]
+    [user?.id]
       .filter(Boolean)
       .map(value => String(value).trim().toLocaleLowerCase())
   );
 
-  const normalizeMembers = value => {
-    if (Array.isArray(value)) return value;
-    if (typeof value !== 'string' || !value.trim()) return [];
-    try {
-      const parsed = JSON.parse(value);
-      if (Array.isArray(parsed)) return parsed;
-    } catch {
-      // Support legacy PostgreSQL array strings such as {user-1,user-2}.
-    }
-    return value
-      .replace(/^\{|\}$/g, '')
-      .split(',')
-      .map(member => member.replace(/^"|"$/g, '').trim())
-      .filter(Boolean);
-  };
-
   const userChannels = channels.filter(channel => {
-    if (channel.type === 'voice') return false;
     if (hasManagementAccess) return true;
-    return normalizeMembers(channel.users).some(memberId =>
+    return channel.memberIds.some(memberId =>
       userIdentitySet.has(String(memberId).trim().toLocaleLowerCase())
     );
   });

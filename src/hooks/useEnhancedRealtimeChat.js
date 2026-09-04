@@ -85,15 +85,14 @@ function resolveUserAvatar(userId, userName, allUsers = [], employees = []) {
 }
 
 function resolveMessageUser(message, allUsers = [], employees = []) {
-  const canonicalId = message.author_id || message.user_id;
+  const canonicalId = message.author_id;
   const canonicalUser = allUsers.find(user => String(user.id) === String(canonicalId));
-  const name = canonicalUser?.name || canonicalUser?.user_id || canonicalUser?.username || message.user_name || 'Unknown user';
+  const name = canonicalUser?.name || canonicalUser?.user_id || canonicalUser?.username || 'Unknown user';
   const avatar = canonicalUser?.avatar
     || canonicalUser?.profile_picture
     || canonicalUser?.profilePicture
     || canonicalUser?.avatar_url
     || canonicalUser?.avatarUrl
-    || message.user_avatar
     || resolveUserAvatar(canonicalId, name, allUsers, employees);
 
   return { id: canonicalId, name, avatar: avatar || null };
@@ -358,9 +357,8 @@ export function useEnhancedRealtimeChat({
             current.map((msg) => {
               if (msg.id === payload.new.id) {
                 // Resolve avatar if it was updated or missing
-                const resolvedAvatar = payload.new.user_avatar || 
-                  msg.user.avatar || 
-                  resolveUserAvatar(payload.new.user_id || msg.user.id, payload.new.user_name || msg.user.name, allUsers, employees);
+                const resolvedAvatar = msg.user.avatar ||
+                  resolveUserAvatar(payload.new.author_id || msg.user.id, msg.user.name, allUsers, employees);
                 
                 return {
                   ...msg,
@@ -472,9 +470,6 @@ export function useEnhancedRealtimeChat({
           content: messageContent || '',
           channel_id: roomName,
           author_id: userId,
-          user_id: userId || "anonymous",
-          user_name: username || "Anonymous",
-          user_avatar: resolvedAvatar || null,
           created_at: optimisticCreatedAt,
         };
 

@@ -79,16 +79,12 @@ export default function ChannelDialog({ onClose, editing, sections, userId, onCr
         section: sectionName,
         description: description.trim(),
         readOnly,
-        type: 'text',
-        userLimit: null,
       })
       : await createChannel({
         name: name.trim(),
         section: sectionName,
         description: description.trim(),
         readOnly,
-        type: 'text',
-        userLimit: null,
         createdBy: userId,
       });
     setIsSaving(false);

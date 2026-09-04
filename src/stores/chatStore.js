@@ -40,10 +40,8 @@ const normalizeChannels = (channels) => {
     ...ch,
     section: ch.section_name ?? ch.section ?? '',
     description: ch.description ?? '',
-    type: ch.type || 'text', // Default to 'text' if type is missing
-    users: Array.isArray(ch.users) ? ch.users : [],
+    memberIds: Array.isArray(ch.memberIds) ? ch.memberIds : [],
     readOnly: ch.read_only ?? ch.readOnly ?? false,
-    userLimit: ch.user_limit ?? ch.userLimit ?? null,
     createdBy: ch.created_by ?? ch.createdBy ?? null,
     createdAt: ch.created_at ?? ch.createdAt ?? null,
   }));
@@ -118,8 +116,7 @@ const loadChannelsFromSupabase = async () => {
     }, {});
     const channels = normalizeChannels((channelsData || []).map(ch => ({
       ...ch,
-      users: membersByChannel[ch.id] || [],
-      userLimit: ch.user_limit || ch.userLimit || null, // Handle both snake_case and camelCase
+      memberIds: membersByChannel[ch.id] || [],
     })));
     // Only use default sections if Supabase has never been initialized (no sections table data)
     // If sections exist but are empty, respect that (user may have deleted all sections)
@@ -163,7 +160,6 @@ const normalizeUserIds = (users = []) => [...new Set(
 const toChannelRow = channel => ({
   id: channel.id,
   name: channel.name,
-  type: 'text',
   read_only: Boolean(channel.readOnly),
   order: Number.isInteger(channel.order) ? channel.order : 0,
   section_name: channel.section,
@@ -176,76 +172,6 @@ const requireData = (data, error, operation) => {
   if (!data) throw new Error(`${operation}: Supabase returned no data`);
   return data;
 };
-
-// Default channels structure
-const getDefaultChannels = () => [
-  {
-    id: 'video-editing-important',
-    name: 'Important Discussion',
-    section: 'Video Editing',
-    description: 'Important discussions for video editing team',
-    users: [],
-    readOnly: false,
-    type: 'text',
-    createdBy: null,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'video-editing-team',
-    name: 'Team Discussion',
-    section: 'Video Editing',
-    description: 'General team discussion',
-    users: [],
-    readOnly: false,
-    type: 'text',
-    createdBy: null,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'video-editing-delivery',
-    name: 'Project Delivery',
-    section: 'Video Editing',
-    description: 'Project delivery discussions',
-    users: [],
-    readOnly: false,
-    type: 'text',
-    createdBy: null,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'graphic-designing-important',
-    name: 'Important Discussion',
-    section: 'Graphic Designing',
-    description: 'Important discussions for graphic design team',
-    users: [],
-    readOnly: false,
-    type: 'text',
-    createdBy: null,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'graphic-designing-team',
-    name: 'Team Discussion',
-    section: 'Graphic Designing',
-    description: 'General team discussion',
-    users: [],
-    readOnly: false,
-    type: 'text',
-    createdBy: null,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'graphic-designing-delivery',
-    name: 'Project Delivery',
-    section: 'Graphic Designing',
-    description: 'Project delivery discussions',
-    users: [],
-    readOnly: false,
-    type: 'text',
-    createdBy: null,
-    createdAt: new Date().toISOString(),
-  },
-];
 
 // Initialize with empty state, will be loaded asynchronously
 const initialState = { 
@@ -398,7 +324,7 @@ export const useChatStore = create((set, get) => ({
     }
 
     return state.channels.filter(channel =>
-      Array.isArray(channel.users) && channel.users.some(memberId =>
+      Array.isArray(channel.memberIds) && channel.memberIds.some(memberId =>
         identitySet.has(String(memberId).trim().toLocaleLowerCase())
       )
     );
@@ -413,10 +339,8 @@ export const useChatStore = create((set, get) => ({
       name: channelData.name,
       section: channelData.section,
       description: channelData.description || '',
-      users: channelData.users || [],
+      memberIds: channelData.memberIds || [],
       readOnly: channelData.readOnly || false,
-      type: channelData.type || 'text',
-      userLimit: channelData.userLimit || null, // User limit for voice rooms
       order: sectionChannels.length,
       createdBy: channelData.createdBy || null,
       createdAt: new Date().toISOString(),
@@ -430,7 +354,7 @@ export const useChatStore = create((set, get) => ({
           .select('*')
           .single();
         const insertedChannel = requireData(data, error, 'Failed to create channel');
-        const memberIds = normalizeUserIds(newChannel.users);
+        const memberIds = normalizeUserIds(newChannel.memberIds);
         if (memberIds.length > 0) {
           const { error: membershipError } = await supabase.rpc('set_chat_channel_members', {
             requested_channel_id: insertedChannel.id,
@@ -438,7 +362,7 @@ export const useChatStore = create((set, get) => ({
           });
           if (membershipError) throw new Error(`Failed to assign channel users: ${membershipError.message}`);
         }
-        persistedChannel = normalizeChannels([{ ...insertedChannel, users: memberIds }])[0];
+        persistedChannel = normalizeChannels([{ ...insertedChannel, memberIds }])[0];
       }
       const currentChannels = get().channels;
       const updatedChannels = currentChannels.some(channel => channel.id === persistedChannel.id)
@@ -458,7 +382,7 @@ export const useChatStore = create((set, get) => ({
     const state = get();
     const existingChannel = state.channels.find(channel => channel.id === channelId);
     if (!existingChannel) return false;
-    const nextChannel = { ...existingChannel, ...updates, id: existingChannel.id, type: 'text' };
+    const nextChannel = { ...existingChannel, ...updates, id: existingChannel.id };
 
     try {
       let persistedChannel = nextChannel;
@@ -473,7 +397,7 @@ export const useChatStore = create((set, get) => ({
           .single();
         persistedChannel = normalizeChannels([{
           ...requireData(data, error, 'Failed to update channel'),
-          users: nextChannel.users,
+          memberIds: nextChannel.memberIds,
         }])[0];
       }
       const updatedChannels = get().channels.map(channel =>
@@ -558,7 +482,7 @@ export const useChatStore = create((set, get) => ({
         if (error) throw new Error(`Failed to update channel users: ${error.message}`);
       }
       const updatedChannels = state.channels.map(ch =>
-        ch.id === channelId ? { ...ch, users: normalizedUserIds } : ch
+        ch.id === channelId ? { ...ch, memberIds: normalizedUserIds } : ch
       );
       set({ channels: updatedChannels });
       saveChatDataToLocalStorage(updatedChannels, state.messages, state.sections);
@@ -722,25 +646,14 @@ export const useChatStore = create((set, get) => ({
         async (payload) => {
           console.log('Channel change detected:', payload.eventType, payload.new || payload.old);
           
-          // If it's an UPDATE, log the users array specifically
-          if (payload.eventType === 'UPDATE' && payload.new) {
-            console.log('Channel UPDATE - Users array:', {
-              channelId: payload.new.id,
-              channelName: payload.new.name,
-              users: payload.new.users,
-              usersType: typeof payload.new.users,
-              usersLength: Array.isArray(payload.new.users) ? payload.new.users.length : 'not array'
-            });
-          }
-          
           // Reload channels from Supabase to get latest state
           const data = await loadChannelsFromSupabase();
           console.log('Reloaded channels after change:', {
             totalChannels: data.channels.length,
-            channelsWithUsers: data.channels.filter(ch => ch.users && ch.users.length > 0).map(ch => ({
+            channelsWithUsers: data.channels.filter(ch => ch.memberIds && ch.memberIds.length > 0).map(ch => ({
               id: ch.id,
               name: ch.name,
-              users: ch.users
+              memberIds: ch.memberIds
             }))
           });
           set({ channels: data.channels, sections: data.sections });

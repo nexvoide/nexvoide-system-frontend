@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Hash, Plus, ChevronDown, ChevronRight, Video, Palette, Users, FolderPlus, GripVertical, Mic, Trash2 } from 'lucide-react';
+import { Hash, Plus, ChevronDown, ChevronRight, Video, Palette, Users, FolderPlus, GripVertical, Trash2 } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore.js';
 import { useUnreadMessages } from '../../hooks/useUnreadMessages.js';
-import Avatar from '../Avatar.jsx';
 
 // Legacy icon mapping (for fallback)
 const sectionIcons = {
@@ -24,8 +23,6 @@ export default function ChatSidebar({
   onReorderChannels,
   onDeleteChannel,
   onDeleteSection,
-  voiceRoomParticipantCounts = {},
-  voiceRoomParticipantDetails = {},
   allUsers = [],
   employees = [],
 }) {
@@ -289,8 +286,6 @@ export default function ChatSidebar({
                           )}
                           <button
                             onClick={() => {
-                              // Voice channels switch immediately (jump to it)
-                              // Text channels use normal selection
                               if (onSelectChannel) {
                                 onSelectChannel(channel.id);
                               }
@@ -299,21 +294,10 @@ export default function ChatSidebar({
                               selectedChannel === channel.id
                                 ? 'bg-[#3b82f6]/20 text-[#3b82f6] border-l-2 border-[#3b82f6]'
                                 : 'text-slate-400 hover:text-white hover:bg-slate-800/20'
-                            } ${isAdmin ? 'pl-10' : ''} ${channel.type === 'voice' ? 'cursor-pointer' : ''}`}
+                            } ${isAdmin ? 'pl-10' : ''}`}
                           >
-                            {channel.type === 'voice' ? (
-                              <Mic size={14} className={selectedChannel === channel.id ? 'text-[#3b82f6]' : ''} />
-                            ) : (
-                              <Hash size={14} className={selectedChannel === channel.id ? 'text-[#3b82f6]' : ''} />
-                            )}
+                            <Hash size={14} className={selectedChannel === channel.id ? 'text-[#3b82f6]' : ''} />
                             <span className="flex-1 text-left truncate">{channel.name}</span>
-                            
-                            {/* Voice Room Participant Count (current/max) */}
-                            {channel.type === 'voice' && channel.userLimit && (
-                              <span className="text-xs text-slate-500 ml-1">
-                                ({voiceRoomParticipantCounts[channel.id] || 0}/{channel.userLimit})
-                              </span>
-                            )}
                             
                             {/* Unread/Mention Badges */}
                             <div className="flex items-center gap-1">
@@ -367,26 +351,6 @@ export default function ChatSidebar({
                             )}
                           </button>
                           
-                          {/* Show active participants under voice channels */}
-                          {channel.type === 'voice' && voiceRoomParticipantDetails[channel.id] && voiceRoomParticipantDetails[channel.id].length > 0 && (
-                            <div className="pl-8 pr-2 pb-2 pt-1 space-y-1.5 border-t border-slate-800/30 mt-1">
-                              {/* Show ALL participants, not just first 5 */}
-                              {voiceRoomParticipantDetails[channel.id].map((participant) => (
-                                <div
-                                  key={participant.userId}
-                                  className="flex items-center gap-2 text-xs text-slate-400 hover:text-slate-300 transition-colors px-2 py-1 rounded hover:bg-slate-800/30"
-                                  title={participant.userName}
-                                >
-                                  <Avatar
-                                    src={participant.userAvatar}
-                                    name={participant.userName}
-                                    size="sm"
-                                  />
-                                  <span className="truncate flex-1 text-xs">{participant.userName}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
                         </div>
                       );
                     })}

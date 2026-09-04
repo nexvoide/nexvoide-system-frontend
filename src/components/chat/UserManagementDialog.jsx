@@ -11,10 +11,10 @@ export default function UserManagementDialog({ channel, allUsers = [], onClose }
     return [...new Set(channelUsers.map(String).map(id => id.trim()).filter(Boolean))];
   };
   
-  const [selectedUsers, setSelectedUsers] = useState(() => initializeSelectedUsers(channel?.users));
+  const [selectedUsers, setSelectedUsers] = useState(() => initializeSelectedUsers(channel?.memberIds));
 
   useEffect(() => {
-    const normalized = initializeSelectedUsers(channel?.users);
+    const normalized = initializeSelectedUsers(channel?.memberIds);
     setSelectedUsers(normalized);
   }, [channel]);
 
