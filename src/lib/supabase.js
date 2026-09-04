@@ -115,9 +115,6 @@ export function createClient() {
 export const TABLES = {
   projects: "projects",
   employees: "employees",
-  time_entries: "time_entries",
-  invoices: "invoices",
-  invoice_items: "invoice_items",
   profiles: "profiles",
   agencies: "agencies",
   brands: "brands",

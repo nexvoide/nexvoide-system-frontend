@@ -28,7 +28,6 @@ export default class ErrorBoundary extends React.Component {
             <div className="space-y-2">
               <button
                 onClick={() => {
-                  localStorage.removeItem('nexvoide_user');
                   window.location.reload();
                 }}
                 className="btn btn-primary w-full"
@@ -60,7 +59,6 @@ export default class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
-
 
 
 

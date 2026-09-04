@@ -155,8 +155,8 @@ function Shell() {
             </h1>
             <p className="text-slate-500 mb-4">{error.message}</p>
             <button
-              onClick={() => {
-                localStorage.removeItem('nexvoide_user');
+              onClick={async () => {
+                await clearUser().catch(() => {});
                 window.location.reload();
               }}
               className="btn btn-primary"

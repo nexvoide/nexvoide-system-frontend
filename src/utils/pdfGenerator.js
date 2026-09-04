@@ -118,64 +118,22 @@ export function generateInvoicePDF(
 
   // Rows + totals
   let totalValue = 0;
-  const projectRows = [];
-  const allTimeEntries = (() => {
-    try {
-      const raw = localStorage.getItem("nexvoide_time_entries");
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  })();
-
-  for (const p of entityProjects) {
-    const projectName = p.projectName || p.project_name || "Unnamed Project";
-    const billingModel = String(p.billingModel || p.billing_model || "project").toLowerCase();
-
-    if (billingModel === "subscription") {
-      const projectEntries = allTimeEntries.filter((entry) => {
-        const projectId = String(entry.projectId || entry.project_id || "");
-        const entryDate = new Date(entry.entryDate || entry.entry_date || "");
-        if (Number.isNaN(entryDate.getTime())) return false;
-        const ym = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, "0")}`;
-        return projectId === String(p.id) && ym === currentMonth;
-      });
-
-      const usedHours = projectEntries.reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0);
-      const includedHours = Number(p.monthlyIncludedHours || p.monthly_included_hours || 0);
-      const customerExtraRate = Number(p.extraHourRate || p.extra_hour_rate || 0);
-      const basePrice = convertCurrency(Number(p.monthlyBasePrice || p.monthly_base_price || p.amount || 0), p.currency || "USD");
-
-      totalValue += basePrice;
-      projectRows.push({
-        name: `${projectName} (Subscription Base)`,
-        quantity: `1 month / ${includedHours.toFixed(0)} Hours`,
-        value: basePrice,
-      });
-      if (usedHours > 0) {
-        const usedHoursAmount = convertCurrency(usedHours * customerExtraRate, p.currency || "USD");
-        totalValue += usedHoursAmount;
-        projectRows.push({
-          name: `${projectName} (Extra Hours)`,
-          quantity: `${usedHours.toFixed(2)} H`,
-          value: usedHoursAmount,
-        });
-      }
-      continue;
-    }
-
+  const projectRows = entityProjects.map((p) => {
     const projectAmount = Number(p.amount || 0);
     const projectCurrency = p.currency || "USD";
     const convertedAmount = convertCurrency(projectAmount, projectCurrency);
     totalValue += convertedAmount;
-    const quantity = p.quantity || p.revisionQuantity || p.revision_quantity || "-";
-    projectRows.push({
+
+    const projectName = p.projectName || p.project_name || "Unnamed Project";
+    const quantity =
+      p.quantity || p.revisionQuantity || p.revision_quantity || "-";
+
+    return {
       name: projectName,
       quantity,
       value: convertedAmount,
-    });
-  }
+    };
+  });
 
   const formatCurrency = (amount) =>
     new Intl.NumberFormat("en-US", {
@@ -625,37 +583,17 @@ export function generateSalaryPDF(
     return n;
   };
 
-  const activeMonth = (() => {
-    try {
-      const settingsRaw = localStorage.getItem("nexvoide_settings");
-      const parsed = settingsRaw ? JSON.parse(settingsRaw) : {};
-      return parsed?.active_month || currentMonth;
-    } catch {
-      return currentMonth;
-    }
-  })();
-
-  // Filter projects in active month where employee is assigned
+  // Filter projects in current month where employee is assigned
   const inMonth = (p) => {
-    const billingModel = String(p.billingModel || p.billing_model || "project").toLowerCase();
-    if (billingModel === "subscription") {
-      const startRaw = p.subscriptionStartDate || p.subscription_start_date || p.startDate || p.start_date;
-      const endRaw = p.subscriptionEndDate || p.subscription_end_date || p.endDate || p.end_date;
-      const [y, m] = String(activeMonth).split("-").map(Number);
-      const monthStart = new Date(y, (m || 1) - 1, 1);
-      const monthEnd = new Date(y, (m || 1), 0, 23, 59, 59, 999);
-      const s = startRaw ? new Date(startRaw) : null;
-      const e = endRaw ? new Date(endRaw) : null;
-      if (s && s > monthEnd) return false;
-      if (e && e < monthStart) return false;
-      return true;
-    }
     const d = p.endDate || p.end_date || p.startDate || p.start_date;
     if (!d) return false;
     const dt = new Date(d);
-    if (Number.isNaN(dt.getTime())) return false;
-    const ym = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
-    return ym === activeMonth;
+    if (isNaN(dt)) return false;
+    const ym = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}`;
+    return ym === currentMonth;
   };
 
   // Normalize assigned field
@@ -672,79 +610,9 @@ export function generateSalaryPDF(
     return [];
   };
 
-  const allTimeEntries = (() => {
-    try {
-      const raw = localStorage.getItem("nexvoide_time_entries");
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  })();
-
-  const employeeId = String(employee.id || "");
-  const employeeName = String(employee.name || "");
-
   // Build rows where this employee appears
   const rows = [];
   for (const p of projects.filter(inMonth)) {
-    const billingModel = String(p.billingModel || p.billing_model || "project").toLowerCase();
-    if (billingModel === "subscription") {
-      const projectId = String(p.id || "");
-      const projectEntries = allTimeEntries.filter((entry) => {
-        const pid = String(entry.projectId || entry.project_id || "");
-        if (pid !== projectId) return false;
-        const d = new Date(entry.entryDate || entry.entry_date || "");
-        if (Number.isNaN(d.getTime())) return false;
-        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        return ym === activeMonth;
-      });
-      const recipientIds = Array.from(
-        new Set(
-          projectEntries
-            .map((entry) => String(entry.employeeId || entry.employee_id || ""))
-            .filter(Boolean)
-        )
-      );
-      const assigned = ensureAssigned(p.assigned);
-      const recipientNamesFallback = assigned.map((a) => String(a?.name || "")).filter(Boolean);
-
-      const isRecipientById = employeeId && recipientIds.includes(employeeId);
-      const isRecipientByName = recipientNamesFallback.some((n) => n.toLowerCase() === employeeName.toLowerCase());
-      if (!isRecipientById && !isRecipientByName) continue;
-
-      const recipientCount = recipientIds.length > 0 ? recipientIds.length : Math.max(1, recipientNamesFallback.length || 1);
-      const configuredBasePayoutPkr = Number(p.employeeMonthlyBasePayoutPkr || p.employee_monthly_base_payout_pkr || 0);
-      const fallbackBaseFromCustomerPkr = convertCurrency(
-        Number(p.monthlyBasePrice || p.monthly_base_price || p.amount || 0),
-        p.currency || "USD"
-      );
-      const projectBasePayoutPkr = configuredBasePayoutPkr > 0 ? configuredBasePayoutPkr : fallbackBaseFromCustomerPkr;
-      const baseShare = projectBasePayoutPkr / recipientCount;
-
-      const overtimeRatePkr = Number(p.employeeExtraHourRatePkr || p.employee_extra_hour_rate_pkr || 0);
-      const myEntries = projectEntries.filter((entry) => {
-        const eid = String(entry.employeeId || entry.employee_id || "");
-        if (employeeId && eid) return eid === employeeId;
-        return String(entry.employeeName || entry.employee_name || "").toLowerCase() === employeeName.toLowerCase();
-      });
-      const extraHours = myEntries
-        .filter((entry) => Boolean(entry.isOvertime || entry.is_overtime))
-        .reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0);
-      const extraPay = extraHours * overtimeRatePkr;
-      const cost = convertCurrency(baseShare + extraPay, "PKR");
-      const includedHours = Number(p.monthlyIncludedHours || p.monthly_included_hours || 0);
-      const baseHoursShare = includedHours > 0 ? includedHours / recipientCount : 0;
-
-      const projectName = p.projectName || p.project_name || "Subscription";
-      rows.push({
-        name: `${projectName} (Subscription)`,
-        quantity: `${baseHoursShare.toFixed(2)} H${extraHours > 0 ? ` + ${extraHours.toFixed(2)} Extra` : ""}`,
-        cost,
-      });
-      continue;
-    }
-
     const assigned = ensureAssigned(p.assigned);
     const found = assigned.find((a) => a?.name === employee.name);
     if (!found) continue;

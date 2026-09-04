@@ -7,10 +7,9 @@ import {
 } from "recharts";
 import { motion } from "framer-motion";
 import { useFilteredProjects, useCanViewFinance, useCanViewFinanceDetails } from "../hooks/useRoleFilter.js";
-import { calculateMonthEndInvoiceDraft } from "../utils/subscriptionBilling.js";
 
 export default function Finance() {
-  const { rate, currency, timeEntries, activeMonth, invoices } = useAppStore();
+  const { rate, currency } = useAppStore();
   const projects = useFilteredProjects(); // Use filtered projects based on role
   const canViewFinance = useCanViewFinance();
   const canViewFinanceDetails = useCanViewFinanceDetails();
@@ -42,186 +41,33 @@ export default function Finance() {
     return [];
   };
 
-  const normalizeYearMonth = (value) => {
-    const raw = String(value || "").trim();
-    if (/^\d{4}-\d{2}$/.test(raw)) return raw;
-    if (/^\d{4}-\d{1}$/.test(raw)) {
-      const [year, month] = raw.split("-");
-      return `${year}-${month.padStart(2, "0")}`;
-    }
-    const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) return "";
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  };
-
-  const getLocalActiveMonth = () => {
-    try {
-      const raw = localStorage.getItem("nexvoide_settings");
-      const parsed = raw ? JSON.parse(raw) : {};
-      return parsed?.active_month || "";
-    } catch {
-      return "";
-    }
-  };
-
-  // Invoice PDFs use `nexvoide_settings.active_month`, so Finance must use the same value
-  const effectiveActiveMonth = normalizeYearMonth(getLocalActiveMonth() || activeMonth);
-
-  const getInvoiceMonthTotalIn = (cur) => {
-    const selectedMonth = effectiveActiveMonth;
-    if (!selectedMonth) return 0;
-    return (Array.isArray(invoices) ? invoices : []).reduce((sum, invoice) => {
-      const periodYear = Number(invoice.periodYear || invoice.period_year || 0);
-      const periodMonth = Number(invoice.periodMonth || invoice.period_month || 0);
-      if (!periodYear || !periodMonth) return sum;
-      const invoiceMonth = `${periodYear}-${String(periodMonth).padStart(2, "0")}`;
-      if (invoiceMonth !== selectedMonth) return sum;
-
-      // Prefer summing invoice_items.line_total because some invoices may have
-      // stale header totals (total/subtotal) while items are correct.
-      const items =
-        invoice.invoiceItems ||
-        invoice.invoice_items ||
-        invoice.items ||
-        [];
-
-      const itemsTotal = Array.isArray(items)
-        ? items.reduce((acc, item) => {
-            const v =
-              Number(item.lineTotal ?? item.line_total ?? item.line_total_usd ?? item.unitPrice ?? item.unit_price ?? 0);
-            return acc + (Number.isFinite(v) ? v : 0);
-          }, 0)
-        : 0;
-
-      const invoiceHeaderTotal = Number(invoice.total ?? invoice.subtotal ?? 0);
-      const invoiceTotal = itemsTotal > 0 ? itemsTotal : invoiceHeaderTotal;
-      const invoiceCurrency = invoice.currency || "USD";
-      return sum + convert(invoiceTotal, invoiceCurrency, cur, rate);
-    }, 0);
-  };
-
-  const getDraftMonthTotalIn = (cur) => {
-    const selectedMonth = effectiveActiveMonth;
-    if (!selectedMonth) return 0;
-    const [yearStr, monthStr] = selectedMonth.split("-");
-    const year = Number(yearStr);
-    const month = Number(monthStr);
-    if (!year || !month) return 0;
-    const drafts = calculateMonthEndInvoiceDraft({
-      projects,
-      timeEntries,
-      year,
-      month,
-    });
-    return (Array.isArray(drafts) ? drafts : []).reduce((sum, draft) => {
-      const subtotal = Number(draft?.subtotal || 0);
-      return sum + convert(subtotal, "USD", cur, rate);
-    }, 0);
-  };
-
-  const getMonthGrossRevenueIn = (cur) => {
-    // Prefer saved invoices (invoice_items) because that's what you actually bill.
-    // Fall back to draft-only calculation when there are no invoices yet.
-    const invoiceMonthTotal = getInvoiceMonthTotalIn(cur);
-    if (invoiceMonthTotal > 0) return invoiceMonthTotal;
-    return getDraftMonthTotalIn(cur);
-  };
-
-  const getProjectEntriesForMonth = (projectId, monthKey) =>
-    (Array.isArray(timeEntries) ? timeEntries : []).filter((entry) => {
-      const entryProjectId = String(entry.projectId || entry.project_id || "");
-      if (entryProjectId !== String(projectId)) return false;
-      const normalizedMonth = normalizeYearMonth(monthKey);
-      if (!normalizedMonth) return true;
-      const d = new Date(entry.entryDate || entry.entry_date || "");
-      if (Number.isNaN(d.getTime())) return false;
-      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      return ym === normalizedMonth;
-    });
-
-  const isSubscriptionLikeProject = (p) => {
-    const billingModel = String(p?.billingModel || p?.billing_model || "project").toLowerCase();
-    const monthlyBaseRaw = Number(p?.monthlyBasePrice || p?.monthly_base_price || 0);
-    const includedRaw = Number(p?.monthlyIncludedHours || p?.monthly_included_hours || 0);
-    const customerExtraRateRaw = Number(p?.extraHourRate || p?.extra_hour_rate || 0);
-    return (
-      billingModel === "subscription" ||
-      monthlyBaseRaw > 0 ||
-      includedRaw > 0 ||
-      customerExtraRateRaw > 0 ||
-      Number(p?.subscriptionStartDate || p?.subscription_start_date ? 1 : 0) > 0
-    );
-  };
-
-  const getProjectFinancials = (p, cur, monthKey = effectiveActiveMonth) => {
-    const billingModel = String(p.billingModel || p.billing_model || "project").toLowerCase();
-    const monthlyBaseRaw = Number(p.monthlyBasePrice || p.monthly_base_price || 0);
-    const includedRaw = Number(p.monthlyIncludedHours || p.monthly_included_hours || 0);
-    const customerExtraRateRaw = Number(p.extraHourRate || p.extra_hour_rate || 0);
-    const isSubscriptionLike =
-      billingModel === "subscription" ||
-      monthlyBaseRaw > 0 ||
-      includedRaw > 0 ||
-      Number(p.subscriptionStartDate || p.subscription_start_date ? 1 : 0) > 0;
-    if (isSubscriptionLike) {
-      const monthlyBase = Number(p.monthlyBasePrice || p.monthly_base_price || p.amount || 0);
-      const customerExtraRate = Number(p.extraHourRate || p.extra_hour_rate || 0);
-      const employeeBasePayoutPkr = Number(p.employeeMonthlyBasePayoutPkr || p.employee_monthly_base_payout_pkr || 0);
-      const employeeExtraRatePkr = Number(p.employeeExtraHourRatePkr || p.employee_extra_hour_rate_pkr || 0);
-      const entries = getProjectEntriesForMonth(p.id, monthKey);
-      const included = Number(p.monthlyIncludedHours || p.monthly_included_hours || 0);
-      const usedHours = entries.reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0);
-      // Invoice PDF charges customer based on total used hours (not (used - included)).
-      const extraHours = usedHours;
-      const order = convert(monthlyBase + (extraHours * customerExtraRate), p.currency || "USD", cur, rate);
-      const emp = convert(employeeBasePayoutPkr + (extraHours * employeeExtraRatePkr), "PKR", cur, rate);
-      return { order, emp };
-    }
-    if (billingModel === "hourly") {
-      const hourlyRate = Number(p.extraHourRate || p.extra_hour_rate || 0);
-      const entries = getProjectEntriesForMonth(p.id, monthKey);
-      const usedHours = entries.reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0);
-      const order = convert(usedHours * hourlyRate, p.currency || "USD", cur, rate);
-      return { order, emp: 0 };
-    }
-    const order = convert(p.amount || 0, p.currency, cur, rate);
-    const assignedArray = ensureAssigned(p.assigned);
-    let emp = 0;
-    for (const a of assignedArray) {
-      if (a.costType === 'percentage') emp += order * (Number(a.costValue) || 0) / 100;
-      else emp += convert(a.costValue || 0, 'PKR', cur, rate);
-    }
-    return { order, emp };
-  };
-
   // Selected currency snapshot for charts and breakdown
   const selectedStats = useMemo(() => {
     let totalRevenue = 0, totalExpenses = 0, completedRevenue = 0, pendingRevenue = 0, inProgressRevenue = 0, cancelledRevenue = 0, revisionRevenue = 0;
     for (const p of projects) {
       // Skip archived projects (they're in archived_projects table, not active projects)
       if (p.archived === true) continue;
-      const { order, emp } = getProjectFinancials(p, currency);
+      const order = convert(p.amount || 0, p.currency, currency, rate);
+      const assignedArray = ensureAssigned(p.assigned);
+      let emp = 0;
+      for (const a of assignedArray) {
+        if (a.costType === 'percentage') emp += order * (Number(a.costValue) || 0) / 100;
+        else emp += convert(a.costValue || 0, 'PKR', currency, rate);
+      }
       const netValue = order - emp; // Net value after team payout
-      const activeDisplayValue = isSubscriptionLikeProject(p) ? order : netValue;
       totalRevenue += order; totalExpenses += emp;
       if (p.status === 'Completed') completedRevenue += order;
       if (p.status === 'Pending') pendingRevenue += order;
-      // For subscription projects, don't deduct employee payout until completed.
-      if (p.status === 'In Progress') inProgressRevenue += activeDisplayValue;
+      // Active Projects Value: Show net value (after team payout deduction)
+      if (p.status === 'In Progress') inProgressRevenue += netValue;
       // Handle both "Cancel" and "Cancelled" status
       if (p.status === 'Cancelled' || p.status === 'Cancel') cancelledRevenue += order;
-      if (p.status === 'Revision' || p.status === 'Revising') revisionRevenue += activeDisplayValue;
-    }
-    // Use invoice totals (preferred) or draft totals as the source of truth for gross revenue.
-    const monthGrossRevenue = getMonthGrossRevenueIn(currency);
-    if (monthGrossRevenue > 0) {
-      totalRevenue = monthGrossRevenue;
-      // Keep completedRevenue at least equal to billed revenue for month-level KPI consistency.
-      completedRevenue = Math.max(completedRevenue, monthGrossRevenue);
+      // Revision Revenue: Show net value (after team payout deduction)
+      if (p.status === 'Revision' || p.status === 'Revising') revisionRevenue += netValue;
     }
     const netProfit = totalRevenue - totalExpenses;
     return { totalRevenue, totalExpenses, netProfit, completedRevenue, pendingRevenue, inProgressRevenue, cancelledRevenue, revisionRevenue };
-  }, [projects, currency, rate, timeEntries, activeMonth, invoices, effectiveActiveMonth]);
+  }, [projects, currency, rate]);
 
   const fmt = (n, cur) => new Intl.NumberFormat('en', { style: 'currency', currency: cur, maximumFractionDigits: 2 }).format(n);
   function computeIn(cur){
@@ -231,21 +77,23 @@ export default function Finance() {
     for (const p of projects) {
       // Skip archived projects (they're in archived_projects table, not active projects)
       if (p.archived === true) continue;
-      const { order, emp } = getProjectFinancials(p, cur);
+      const order = convert(p.amount||0, p.currency, cur, rate);
+      const assignedArray = ensureAssigned(p.assigned);
+      let emp = 0;
+      for (const a of assignedArray) {
+        if (a.costType === 'percentage') emp += order*(Number(a.costValue)||0)/100;
+        else emp += convert(a.costValue||0, 'PKR', cur, rate);
+      }
       const netValue = order - emp; // Net value after team payout
-      const activeDisplayValue = isSubscriptionLikeProject(p) ? order : netValue;
       totalRevenue += order; totalExpenses += emp;
       if (p.status==='Completed') { completedRevenue += order; employeeCompleted += emp; }
       if (p.status==='Pending') pendingRevenue += order;
-      if (p.status==='In Progress') inProgressRevenue += activeDisplayValue;
+      // Active Projects Value: Show net value (after team payout deduction)
+      if (p.status==='In Progress') inProgressRevenue += netValue;
       // Handle both "Cancel" and "Cancelled" status
       if (p.status==='Cancelled' || p.status==='Cancel') cancelledRevenue += order;
-      if (p.status==='Revision' || p.status==='Revising') revisionRevenue += activeDisplayValue;
-    }
-    const monthGrossRevenue = getMonthGrossRevenueIn(cur);
-    if (monthGrossRevenue > 0) {
-      totalRevenue = monthGrossRevenue;
-      completedRevenue = Math.max(completedRevenue, monthGrossRevenue);
+      // Revision Revenue: Show net value (after team payout deduction)
+      if (p.status==='Revision' || p.status==='Revising') revisionRevenue += netValue;
     }
     // Profit is only from completed orders
     const netProfit = completedRevenue - employeeCompleted;
@@ -272,7 +120,13 @@ export default function Finance() {
         if (projectDate) {
           const projMonth = projectDate.substring(0, 7); // YYYY-MM
           if (projMonth === monthKey) {
-            const { order, emp } = getProjectFinancials(p, currency, monthKey);
+            const order = convert(p.amount || 0, p.currency, currency, rate);
+            const assignedArray = ensureAssigned(p.assigned);
+            let emp = 0;
+            for (const a of assignedArray) {
+              if (a.costType === 'percentage') emp += order * (Number(a.costValue) || 0) / 100;
+              else emp += convert(a.costValue || 0, 'PKR', currency, rate);
+            }
             revenue += order;
             expenses += emp;
             profit += order - emp;
@@ -282,7 +136,7 @@ export default function Finance() {
       months.push({ name: monthName, revenue, expenses, profit });
     }
     return months;
-  }, [projects, currency, rate, timeEntries, activeMonth, effectiveActiveMonth]);
+  }, [projects, currency, rate]);
 
   // Revenue by platform
   const platformData = useMemo(() => {
@@ -292,22 +146,21 @@ export default function Finance() {
       if (p.archived === true) continue;
       const platform = p.platform || 'Direct';
       if (platforms.hasOwnProperty(platform)) {
-        const { order } = getProjectFinancials(p, currency);
-        platforms[platform] += order;
+        platforms[platform] += convert(p.amount || 0, p.currency, currency, rate);
       }
     }
     return Object.entries(platforms)
       .map(([name, value]) => ({ name, value }))
       .filter(item => item.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [projects, currency, rate, timeEntries, activeMonth, effectiveActiveMonth]);
+  }, [projects, currency, rate]);
 
   // Top performing clients (by revenue)
   const topClients = useMemo(() => {
     const clientMap = new Map();
     for (const p of projects) {
       const clientName = p.clientName || 'Unknown';
-      const { order } = getProjectFinancials(p, currency);
+      const order = convert(p.amount || 0, p.currency, currency, rate);
       const existing = clientMap.get(clientName) || 0;
       clientMap.set(clientName, existing + order);
     }
@@ -315,7 +168,7 @@ export default function Finance() {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
-  }, [projects, currency, rate, timeEntries, activeMonth, effectiveActiveMonth]);
+  }, [projects, currency, rate]);
 
   // Revenue vs Expenses comparison (last 6 months)
   const revenueExpensesData = useMemo(() => {

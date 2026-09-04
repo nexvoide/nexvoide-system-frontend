@@ -1,5 +1,4 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import bcrypt from 'npm:bcryptjs@3';
 
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_ATTEMPTS = 10;
@@ -53,12 +52,12 @@ Deno.serve(async request => {
 
   try {
     const payload = await request.json();
-    if (payload?.action === 'set-user-password') {
+    if (payload?.action === 'set-user-password' || payload?.action === 'delete-user') {
       const authorization = request.headers.get('authorization') ?? '';
       const token = authorization.replace(/^Bearer\s+/i, '');
       const targetUserId = typeof payload?.user_id === 'string' ? payload.user_id.trim() : '';
       const newPassword = typeof payload?.password === 'string' ? payload.password : '';
-      if (!token || !targetUserId || newPassword.length < 8 || newPassword.length > 1024) {
+      if (!token || !targetUserId || (payload.action === 'set-user-password' && (newPassword.length < 8 || newPassword.length > 1024))) {
         return json({ error: 'Invalid request' }, 400, origin);
       }
       const url = Deno.env.get('SUPABASE_URL');
@@ -74,14 +73,46 @@ Deno.serve(async request => {
         return json({ error: 'Not authorized' }, 403, origin);
       }
       const { data: target, error: targetError } = await admin.from('users')
-        .select('id, auth_user_id').eq('id', targetUserId).maybeSingle();
+        .select('id, username, email, role, active, auth_user_id').eq('id', targetUserId).maybeSingle();
       if (targetError || !target) return json({ error: 'User not found' }, 404, origin);
-      const passwordHash = await bcrypt.hash(newPassword, 12);
-      const { error: updateError } = await admin.from('users').update({ password_hash: passwordHash }).eq('id', target.id);
-      if (updateError) return json({ error: 'Unable to update password' }, 500, origin);
+      if (payload.action === 'delete-user') {
+        if (target.auth_user_id === authData.user.id) return json({ error: 'You cannot delete your own account' }, 409, origin);
+        const { error: deleteAppUserError } = await admin.from('users').delete().eq('id', target.id);
+        if (deleteAppUserError) return json({ error: 'Unable to delete user' }, 500, origin);
+        if (target.auth_user_id) {
+          const { error: deleteAuthUserError } = await admin.auth.admin.deleteUser(target.auth_user_id);
+          if (deleteAuthUserError) return json({ error: 'User removed, but authentication-account cleanup failed' }, 500, origin);
+        }
+        return json({ success: true }, 200, origin);
+      }
+      const targetEmail = target.email?.trim() || `${target.id}@users.nexvoide.invalid`;
       if (target.auth_user_id) {
-        const { error: authUpdateError } = await admin.auth.admin.updateUserById(target.auth_user_id, { password: newPassword });
+        const { error: authUpdateError } = await admin.auth.admin.updateUserById(target.auth_user_id, {
+          password: newPassword,
+          email: targetEmail,
+          app_metadata: { nexvoide_user_id: target.id, roles: target.role },
+        });
         if (authUpdateError) return json({ error: 'Unable to update password' }, 500, origin);
+      } else {
+        const { data: created, error: createError } = await admin.auth.admin.createUser({
+          email: targetEmail,
+          password: newPassword,
+          email_confirm: true,
+          app_metadata: { nexvoide_user_id: target.id, roles: target.role },
+          user_metadata: { username: target.username },
+        });
+        if (createError || !created.user) return json({ error: 'Unable to create the authentication account' }, 500, origin);
+
+        const { data: linked, error: linkError } = await admin.from('users')
+          .update({ auth_user_id: created.user.id })
+          .eq('id', target.id)
+          .is('auth_user_id', null)
+          .select('auth_user_id')
+          .maybeSingle();
+        if (linkError || !linked) {
+          await admin.auth.admin.deleteUser(created.user.id);
+          return json({ error: 'Unable to link the authentication account' }, 409, origin);
+        }
       }
       return json({ success: true }, 200, origin);
     }
@@ -101,35 +132,14 @@ Deno.serve(async request => {
 
     const admin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
     const { data: appUser, error: userError } = await admin.from('users')
-      .select('id, username, email, role, active, password_hash, auth_user_id')
+      .select('id, username, email, role, active, auth_user_id')
       .ilike('username', username).maybeSingle();
     if (userError || !appUser || appUser.active === false) {
       return json({ error: 'Invalid username or password' }, 401, origin);
     }
 
     const email = appUser.email?.trim() || `${appUser.id}@users.nexvoide.invalid`;
-    let authUserId = appUser.auth_user_id as string | null;
-    if (!authUserId) {
-      if (!appUser.password_hash || !await bcrypt.compare(password, appUser.password_hash)) {
-        return json({ error: 'Invalid username or password' }, 401, origin);
-      }
-      const { data: created, error: createError } = await admin.auth.admin.createUser({
-        email, password, email_confirm: true,
-        app_metadata: { nexvoide_user_id: appUser.id, roles: appUser.role },
-      });
-      if (createError || !created.user) return json({ error: 'Invalid username or password' }, 401, origin);
-      const { data: linked, error: linkError } = await admin.from('users')
-        .update({ auth_user_id: created.user.id }).eq('id', appUser.id).is('auth_user_id', null)
-        .select('auth_user_id').maybeSingle();
-      if (linkError || !linked) {
-        await admin.auth.admin.deleteUser(created.user.id);
-        const { data: winner } = await admin.from('users').select('auth_user_id').eq('id', appUser.id).single();
-        authUserId = winner?.auth_user_id ?? null;
-      } else {
-        authUserId = created.user.id;
-      }
-    }
-    if (!authUserId) return json({ error: 'Invalid username or password' }, 401, origin);
+    if (!appUser.auth_user_id) return json({ error: 'Invalid username or password' }, 401, origin);
 
     const authClient = createClient(url, anonKey, { auth: { autoRefreshToken: false, persistSession: false } });
     const { data: signIn, error: signInError } = await authClient.auth.signInWithPassword({ email, password });

@@ -4,9 +4,8 @@
  */
 
 import { supabase, isSupabaseConfigured } from '../lib/supabase.js';
-import { dbProjects, dbTimeEntries, dbInvoices } from '../lib/db.js';
+import { dbProjects } from '../lib/db.js';
 import { convert } from "../stores/appStore.js";
-import { calculateMonthEndInvoiceDraft } from './subscriptionBilling.js';
 
 /**
  * Get current month and year
@@ -21,31 +20,6 @@ export function getCurrentMonthYear() {
 }
 
 /**
- * Get the month that should normally be closed.
- * Example: on May 1, you usually close April.
- */
-export function getClosableMonthYear(activeMonth = '') {
-  if (activeMonth && /^\d{4}-\d{2}$/.test(String(activeMonth))) {
-    const [yearStr, monthStr] = String(activeMonth).split('-');
-    const year = Number(yearStr);
-    const month = Number(monthStr);
-    return {
-      year,
-      month,
-      monthLabel: getMonthLabel(year, month),
-    };
-  }
-
-  const now = new Date();
-  const closable = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return {
-    year: closable.getFullYear(),
-    month: closable.getMonth() + 1,
-    monthLabel: closable.toLocaleString('default', { month: 'long', year: 'numeric' })
-  };
-}
-
-/**
  * Get month label from year and month
  */
 export function getMonthLabel(year, month) {
@@ -56,54 +30,23 @@ export function getMonthLabel(year, month) {
 /**
  * Check if a project is completed
  */
-function normalizeProjectStatus(status) {
-  const raw = String(status || '').trim().toLowerCase();
-  if (!raw) return '';
-
-  // Normalize common aliases and wording differences.
-  if (raw === 'complete' || raw === 'completed' || raw === 'done') return 'completed';
-  if (raw === 'in progress' || raw === 'in-progress' || raw === 'progress') return 'in_progress';
-  if (raw === 'pending') return 'pending';
-  if (raw === 'revision' || raw === 'revising') return 'revision';
-  if (raw === 'cancel' || raw === 'cancelled' || raw === 'canceled') return 'cancelled';
-
-  return raw;
-}
-
 export function isProjectCompleted(project) {
-  return normalizeProjectStatus(project?.status) === 'completed';
+  const completedStatuses = ['Completed', 'completed', 'Done', 'done'];
+  return completedStatuses.includes(project.status);
 }
 
 /**
  * Check if a project is incomplete
  */
 export function isProjectIncomplete(project) {
-  const normalized = normalizeProjectStatus(project?.status);
-  return normalized === 'in_progress' || normalized === 'pending' || normalized === 'revision';
+  const incompleteStatuses = ['In Progress', 'in progress', 'Pending', 'pending', 'Revision', 'revision', 'Revising'];
+  return incompleteStatuses.includes(project.status);
 }
 
 /**
  * Calculate project financials
  */
-function getMonthBounds(year, month) {
-  const start = new Date(year, month - 1, 1);
-  const end = new Date(year, month, 0, 23, 59, 59, 999);
-  return { start, end };
-}
-
-function getProjectEntriesForMonth(timeEntries, projectId, year, month) {
-  if (!year || !month) return [];
-  const { start, end } = getMonthBounds(year, month);
-  return (Array.isArray(timeEntries) ? timeEntries : []).filter((entry) => {
-    const pid = String(entry.project_id || entry.projectId || '');
-    if (pid !== String(projectId)) return false;
-    const d = new Date(entry.entry_date || entry.entryDate || '');
-    if (Number.isNaN(d.getTime())) return false;
-    return d >= start && d <= end;
-  });
-}
-
-export function calculateProjectFinancials(project, currency = 'USD', rate = 280, context = {}) {
+export function calculateProjectFinancials(project, currency = 'USD', rate = 280) {
   const ensureAssigned = (assigned) => {
     if (Array.isArray(assigned)) return assigned;
     if (typeof assigned === 'string') {
@@ -116,45 +59,6 @@ export function calculateProjectFinancials(project, currency = 'USD', rate = 280
     }
     return [];
   };
-
-  const billingModel = String(project?.billingModel || project?.billing_model || 'project').toLowerCase();
-  const monthlyBaseRaw = Number(project?.monthlyBasePrice || project?.monthly_base_price || 0);
-  const includedRaw = Number(project?.monthlyIncludedHours || project?.monthly_included_hours || 0);
-  const customerExtraRateRaw = Number(project?.extraHourRate || project?.extra_hour_rate || 0);
-  const isSubscriptionLike =
-    billingModel === 'subscription' ||
-    monthlyBaseRaw > 0 ||
-    includedRaw > 0 ||
-    customerExtraRateRaw > 0 ||
-    Number(project?.subscriptionStartDate || project?.subscription_start_date ? 1 : 0) > 0;
-
-  const ctxYear = Number(context?.year || 0);
-  const ctxMonth = Number(context?.month || 0);
-  const ctxEntries = Array.isArray(context?.timeEntries) ? context.timeEntries : [];
-
-  if (isSubscriptionLike && ctxYear && ctxMonth) {
-    const monthlyBase = Number(project.monthly_base_price || project.monthlyBasePrice || project.amount || 0);
-    const customerExtraRate = Number(project.extra_hour_rate || project.extraHourRate || 0);
-    const employeeBasePayoutPkr = Number(project.employee_monthly_base_payout_pkr || project.employeeMonthlyBasePayoutPkr || 0);
-    const employeeExtraRatePkr = Number(project.employee_extra_hour_rate_pkr || project.employeeExtraHourRatePkr || 0);
-    const entries = getProjectEntriesForMonth(ctxEntries, project.id, ctxYear, ctxMonth);
-    const usedHours = entries.reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0);
-
-    // Match invoice/finance behavior: charge extra based on total used hours in the month.
-    const revenueRaw = monthlyBase + (usedHours * customerExtraRate);
-    const revenue = convert(revenueRaw, project.currency || 'USD', currency, rate);
-
-    const teamCostRawPkr = employeeBasePayoutPkr + (usedHours * employeeExtraRatePkr);
-    const teamCost = convert(teamCostRawPkr, 'PKR', currency, rate);
-    const profit = revenue - teamCost;
-
-    return {
-      revenue,
-      teamCost,
-      profit,
-      currency,
-    };
-  }
 
   const order = convert(project.amount || 0, project.currency || 'USD', currency, rate);
   const assignedArray = ensureAssigned(project.assigned);
@@ -261,32 +165,11 @@ export async function getProjectsForMonth(year, month, includeArchived = true) {
   }
 }
 
-function isDateInRange(d, startDate, endDate) {
-  if (!d) return false;
-  return d >= startDate && d <= endDate;
-}
-
-function wasProjectActiveInMonth(project, startDate, endDate) {
-  const projectStart = project.start_date ? new Date(project.start_date) : (project.startDate ? new Date(project.startDate) : null);
-  const projectEnd = project.end_date ? new Date(project.end_date) : (project.endDate ? new Date(project.endDate) : null);
-  const projectCreated = project.created_at ? new Date(project.created_at) : null;
-
-  // Same “in month” logic used in getProjectsForMonth (minus pulled_forward shortcut)
-  if (projectCreated && isDateInRange(projectCreated, startDate, endDate)) return true;
-  if (projectStart && isDateInRange(projectStart, startDate, endDate)) return true;
-  if (projectEnd && isDateInRange(projectEnd, startDate, endDate)) return true;
-  if (projectStart && projectEnd && projectStart <= startDate && projectEnd >= endDate) return true;
-  return false;
-}
-
 /**
  * Calculate monthly statistics
  */
-export async function calculateMonthlyStats(year, month, currency = 'USD', rate = 280, includeArchived = true, timeEntriesOverride = null) {
-  const projects = await getProjectsForMonth(year, month, includeArchived);
-  const allTimeEntries = Array.isArray(timeEntriesOverride)
-    ? timeEntriesOverride
-    : await dbTimeEntries.getAll();
+export async function calculateMonthlyStats(year, month, currency = 'USD', rate = 280) {
+  const projects = await getProjectsForMonth(year, month);
   
   let totalRevenue = 0;
   let totalExpenses = 0;
@@ -311,26 +194,26 @@ export async function calculateMonthlyStats(year, month, currency = 'USD', rate 
   const employeeCosts = {};
   
   for (const project of projects) {
-    const financials = calculateProjectFinancials(project, currency, rate, { year, month, timeEntries: allTimeEntries });
+    const financials = calculateProjectFinancials(project, currency, rate);
     totalRevenue += financials.revenue;
     totalExpenses += financials.teamCost;
     totalTeamCost += financials.teamCost;
     
     // Count by status
-    const status = normalizeProjectStatus(project.status || 'In Progress');
-    if (status === 'completed') {
+    const status = project.status || 'In Progress';
+    if (status === 'Completed' || status === 'completed') {
       completedProjects++;
       completedRevenue += financials.revenue;
-    } else if (status === 'pending') {
+    } else if (status === 'Pending' || status === 'pending') {
       pendingProjects++;
       pendingRevenue += financials.revenue;
-    } else if (status === 'in_progress') {
+    } else if (status === 'In Progress' || status === 'in progress') {
       inProgressProjects++;
       inProgressRevenue += financials.revenue - financials.teamCost; // Net value
-    } else if (status === 'cancelled') {
+    } else if (status === 'Cancelled' || status === 'cancelled' || status === 'Cancel') {
       cancelledProjects++;
       cancelledRevenue += financials.revenue;
-    } else if (status === 'revision') {
+    } else if (status === 'Revision' || status === 'revision' || status === 'Revising') {
       revisionProjects++;
       revisionRevenue += financials.revenue - financials.teamCost; // Net value
     }
@@ -369,28 +252,7 @@ export async function calculateMonthlyStats(year, month, currency = 'USD', rate 
       }
     }
   }
-
-  // For subscription billing, invoices are generated from month time entries.
-  // Use invoice draft total as the source of truth for gross revenue, to match invoices.
-  try {
-    const invoiceDrafts = calculateMonthEndInvoiceDraft({
-      projects,
-      timeEntries: allTimeEntries,
-      year,
-      month,
-    });
-    const draftTotal = (Array.isArray(invoiceDrafts) ? invoiceDrafts : []).reduce((sum, draft) => {
-      const subtotal = Number(draft?.subtotal || 0);
-      return sum + convert(subtotal, 'USD', currency, rate);
-    }, 0);
-    if (draftTotal > 0) {
-      totalRevenue = draftTotal;
-      completedRevenue = Math.max(completedRevenue, draftTotal);
-    }
-  } catch (e) {
-    console.warn('Draft invoice total failed in monthly stats:', e);
-  }
-
+  
   const netProfit = totalRevenue - totalExpenses;
   
   return {
@@ -419,13 +281,13 @@ export async function calculateMonthlyStats(year, month, currency = 'USD', rate 
 /**
  * Archive a project
  */
-export async function archiveProject(project, archivedMonthId, currency = 'USD', rate = 280, context = {}) {
+export async function archiveProject(project, archivedMonthId, currency = 'USD', rate = 280) {
   if (!isSupabaseConfigured || !supabase) {
     console.warn('Supabase not configured, cannot archive project');
     return null;
   }
   
-  const financials = calculateProjectFinancials(project, currency, rate, context);
+  const financials = calculateProjectFinancials(project, currency, rate);
   
   const archivedProject = {
     archived_month_id: archivedMonthId,
@@ -439,9 +301,8 @@ export async function archiveProject(project, archivedMonthId, currency = 'USD',
     service: project.service,
     quantity: project.quantity,
     revision_quantity: project.revision_quantity,
-    // Store the computed monthly revenue so archive views match invoices/finance.
-    amount: financials.revenue || 0,
-    currency,
+    amount: project.amount || 0,
+    currency: project.currency || 'USD',
     status: 'Completed', // Archived projects are always marked as completed
     is_revision: project.is_revision || false,
     start_date: project.start_date || project.startDate,
@@ -531,16 +392,11 @@ export async function closeMonth(year, month, userId, options = {}) {
   let archivedMonthId;
   let isUpdate = false;
   
-  // Load time entries once for consistent calculations (stats + invoices + archiving).
-  const allTimeEntries = await dbTimeEntries.getAll();
-
   // Calculate statistics first (before modifying projects)
-  // During month closing, compute stats from active rows only (not archived snapshots).
-  const stats = await calculateMonthlyStats(year, month, currency, rate, false, allTimeEntries);
+  const stats = await calculateMonthlyStats(year, month, currency, rate);
   
   // Get all projects for the month
-  // During month closing, act only on active rows.
-  const allProjects = await getProjectsForMonth(year, month, false);
+  const allProjects = await getProjectsForMonth(year, month);
   
   // Separate projects based on user's explicit selections
   // Only archive/pull forward projects that user explicitly selected
@@ -730,7 +586,7 @@ export async function closeMonth(year, month, userId, options = {}) {
   for (const project of completedProjects) {
     try {
       // Create archive record
-      const archived = await archiveProject(project, archivedMonth.id, currency, rate, { year, month, timeEntries: allTimeEntries });
+      const archived = await archiveProject(project, archivedMonth.id, currency, rate);
       if (archived) archivedProjects.push(archived);
       
       // Mark project as archived in main projects table
@@ -740,8 +596,7 @@ export async function closeMonth(year, month, userId, options = {}) {
           .update({ 
             archived: true,
             archived_month_id: archivedMonth.id,
-            status: 'Completed', // Ensure status is Completed
-            pulled_forward: false // Important: don't let completed projects appear in next month
+            status: 'Completed' // Ensure status is Completed
           })
           .eq('id', project.id)
           .select(); // Select to verify update
@@ -765,76 +620,6 @@ export async function closeMonth(year, month, userId, options = {}) {
     } catch (error) {
       console.error(`Error archiving project ${project.id}:`, error);
     }
-  }
-
-  // Repair pass:
-  // If any completed project that belongs to this month failed to archive (or wasn’t included),
-  // archive it now so it doesn’t leak into the next month’s “Completed” list.
-  try {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59);
-    const globalActiveProjects = await dbProjects.getAll();
-
-    const monthCompleted = allProjects.filter(p => isProjectCompleted(p) && wasProjectActiveInMonth(p, startDate, endDate));
-    // Also include old completed carryovers (for example restored old months) so they
-    // don't stay visible in active "Completed" lists after closing a month.
-    const carryoverCompleted = (Array.isArray(globalActiveProjects) ? globalActiveProjects : []).filter(p => {
-      const normalizedStatus = normalizeProjectStatus(p?.status);
-      const isCompleted = normalizedStatus === 'completed';
-      const isArchived = p?.archived === true;
-      const isPulledForward = p?.pulled_forward === true || p?.pulledForward === true;
-      return isCompleted && !isArchived && !isPulledForward;
-    });
-
-    const repairCandidatesById = new Map();
-    for (const project of [...monthCompleted, ...carryoverCompleted]) {
-      const projectId = String(project?.id || '').trim();
-      if (!projectId) continue;
-      repairCandidatesById.set(projectId, project);
-    }
-
-    const alreadyArchivedIds = new Set(archivedProjects.map(p => String(p.original_project_id || '').trim()).filter(Boolean));
-
-    for (const project of repairCandidatesById.values()) {
-      const projectId = String(project.id || '').trim();
-      if (!projectId) continue;
-      if (alreadyArchivedIds.has(projectId)) continue;
-
-      // Double-check current DB state to avoid duplicating archive rows
-      const { data: dbRow } = await supabase
-        .from('projects')
-        .select('id, archived, archived_month_id, pulled_forward, status')
-        .eq('id', projectId)
-        .maybeSingle();
-
-      if (dbRow?.archived === true && String(dbRow.archived_month_id || '') === String(archivedMonth.id)) {
-        continue;
-      }
-
-      console.warn(`🛠️ Repair archive: archiving missed completed project ${projectId}`);
-
-      try {
-        await archiveProject(project, archivedMonth.id, currency, rate, { year, month, timeEntries: allTimeEntries });
-      } catch (e) {
-        console.error(`🛠️ Repair archive failed to insert archived_projects for ${projectId}:`, e);
-      }
-
-      try {
-        await supabase
-          .from('projects')
-          .update({
-            archived: true,
-            archived_month_id: archivedMonth.id,
-            status: 'Completed',
-            pulled_forward: false
-          })
-          .eq('id', projectId);
-      } catch (e) {
-        console.error(`🛠️ Repair archive failed to update projects row for ${projectId}:`, e);
-      }
-    }
-  } catch (repairError) {
-    console.warn('🛠️ Repair archive pass failed:', repairError);
   }
   
   // Pull forward projects - mark them as pulled forward
@@ -974,49 +759,6 @@ export async function closeMonth(year, month, userId, options = {}) {
   
   console.log(`✅ Successfully pulled forward ${pulledProjects.length} projects`);
   
-  // Build consolidated invoices (subscription + regular projects) for this month.
-  let invoiceDetails = [];
-  let invoiceCount = 0;
-  let paidInvoices = 0;
-  let unpaidInvoices = 0;
-  try {
-    const invoiceDrafts = calculateMonthEndInvoiceDraft({
-      projects: allProjects,
-      timeEntries: allTimeEntries,
-      year,
-      month,
-    });
-
-    for (const draft of invoiceDrafts) {
-      await dbInvoices.upsertMonthlyInvoice(
-        {
-          customer_key: draft.customerKey,
-          customer_name: draft.customerName,
-          period_year: year,
-          period_month: month,
-          status: 'draft',
-          subtotal: draft.subtotal,
-          total: draft.subtotal,
-          currency,
-          metadata: { generatedBy: 'monthly_close', generatedAt: new Date().toISOString() },
-        },
-        draft.items
-      );
-    }
-
-    invoiceCount = invoiceDrafts.length;
-    paidInvoices = 0;
-    unpaidInvoices = invoiceDrafts.length;
-    invoiceDetails = invoiceDrafts.map((draft) => ({
-      customer_key: draft.customerKey,
-      customer_name: draft.customerName,
-      total: draft.subtotal,
-      items: draft.items.length,
-    }));
-  } catch (invoiceError) {
-    console.error('Invoice generation failed during month close:', invoiceError);
-  }
-
   // Create or update finance snapshot
   const financeData = {
     archived_month_id: archivedMonth.id,
@@ -1027,10 +769,10 @@ export async function closeMonth(year, month, userId, options = {}) {
     service_revenue: stats.serviceRevenue,
     employee_costs: stats.employeeCosts,
     expenses: {},
-    total_invoices: invoiceCount,
-    paid_invoices: paidInvoices,
-    unpaid_invoices: unpaidInvoices,
-    invoice_details: invoiceDetails
+    total_invoices: 0,
+    paid_invoices: 0,
+    unpaid_invoices: 0,
+    invoice_details: []
   };
   
   let financeSnapshot;
@@ -1162,79 +904,5 @@ export async function getFinanceSnapshot(archivedMonthId) {
     console.error('Error getting finance snapshot:', error);
     return null;
   }
-}
-
-/**
- * Restore an archived month back to active projects.
- * - Unarchives linked projects (by original_project_id)
- * - Removes archived month snapshot (cascade removes archived projects/snapshots)
- */
-export async function restoreArchivedMonth(archivedMonthId) {
-  if (!isSupabaseConfigured || !supabase) {
-    throw new Error('Supabase not configured. Cannot restore archived month.');
-  }
-
-  // Load archived projects for this month first (needed before cascade delete)
-  const { data: archivedProjects, error: archivedError } = await supabase
-    .from('archived_projects')
-    .select('id, original_project_id, status')
-    .eq('archived_month_id', archivedMonthId);
-
-  if (archivedError) throw archivedError;
-
-  let restoredCount = 0;
-  let skippedCount = 0;
-
-  const projectIds = (archivedProjects || [])
-    .map(p => p.original_project_id)
-    .filter(Boolean);
-
-  if (projectIds.length > 0) {
-    const { data: updated, error: updateError } = await supabase
-      .from('projects')
-      .update({
-        archived: false,
-        archived_month_id: null,
-        pulled_forward: false
-      })
-      .in('id', projectIds)
-      .select('id');
-
-    if (updateError) throw updateError;
-    restoredCount = updated?.length || 0;
-    skippedCount = projectIds.length - restoredCount;
-  }
-
-  // Delete archived month record (cascades archived_projects + finance snapshot)
-  const { error: deleteMonthError } = await supabase
-    .from('archived_months')
-    .delete()
-    .eq('id', archivedMonthId);
-
-  if (deleteMonthError) throw deleteMonthError;
-
-  return {
-    restoredCount,
-    skippedCount,
-    archivedProjectCount: archivedProjects?.length || 0
-  };
-}
-
-/**
- * Permanently delete an archived month snapshot.
- * Note: This does NOT restore projects; it only removes archive records.
- */
-export async function deleteArchivedMonth(archivedMonthId) {
-  if (!isSupabaseConfigured || !supabase) {
-    throw new Error('Supabase not configured. Cannot delete archived month.');
-  }
-
-  const { error } = await supabase
-    .from('archived_months')
-    .delete()
-    .eq('id', archivedMonthId);
-
-  if (error) throw error;
-  return { deleted: true };
 }
 

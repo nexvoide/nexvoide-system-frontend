@@ -224,7 +224,10 @@ export default function UserManagement() {
   const handleDelete = async (userId) => {
     if (!confirm("Are you sure you want to delete this user?")) return;
     try {
-      await db.dbUsers.delete(userId);
+      const { data, error } = await supabase.functions.invoke('chat-auth', {
+        body: { action: 'delete-user', user_id: userId },
+      });
+      if (error || !data?.success) throw new Error(data?.error || 'Unable to securely delete the user');
       await loadUsers();
     } catch (error) {
       console.error("Failed to delete user:", error);

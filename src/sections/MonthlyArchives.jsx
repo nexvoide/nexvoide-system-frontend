@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Calendar, Download, Filter, Search, TrendingUp, TrendingDown, 
-  DollarSign, FileText, BarChart3, Eye, ChevronDown, ChevronUp, X, Trash2
+  DollarSign, FileText, BarChart3, Eye, ChevronDown, ChevronUp, X
 } from 'lucide-react';
-import { getArchivedMonths, getArchivedProjects, getFinanceSnapshot, deleteArchivedMonth } from '../utils/monthlyClosing.js';
+import { getArchivedMonths, getArchivedProjects, getFinanceSnapshot } from '../utils/monthlyClosing.js';
   import { useAppStore, convert } from "../stores/appStore.js";
 import { hasRole } from '../utils/permissions.js';
 import { ROLES } from '../utils/permissions.js';
@@ -19,7 +19,6 @@ export default function MonthlyArchives() {
   const [expandedMonth, setExpandedMonth] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterYear, setFilterYear] = useState(null);
-  const [actionLoadingId, setActionLoadingId] = useState(null);
 
   const isAdmin = hasRole(user?.role, ROLES.ADMIN);
 
@@ -126,35 +125,6 @@ export default function MonthlyArchives() {
     currency: currency, 
     maximumFractionDigits: 2 
   }).format(n);
-
-  const handleDeleteMonth = async (month) => {
-    const ok = window.confirm(
-      `Delete archive for ${month.month_label} permanently?\n\nThis removes archive snapshots.\nProjects will remain in their current state.`
-    );
-    if (!ok) return;
-
-    setActionLoadingId(month.id);
-    try {
-      await deleteArchivedMonth(month.id);
-      alert(`Deleted archive month: ${month.month_label}`);
-
-      if (selectedMonth?.id === month.id) {
-        setSelectedMonth(null);
-        setMonthProjects([]);
-        setFinanceSnapshot(null);
-      }
-      if (expandedMonth === month.id) {
-        setExpandedMonth(null);
-      }
-
-      await loadArchivedMonths();
-    } catch (error) {
-      console.error('Delete archived month failed:', error);
-      alert(`Failed to delete archive month: ${error.message || 'Please try again.'}`);
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
 
   if (!isAdmin) {
     return (
@@ -361,23 +331,13 @@ export default function MonthlyArchives() {
 
                     {/* View Details Button */}
                     <div className="mt-4">
-                      <div className="grid sm:grid-cols-3 gap-2">
-                        <button
-                          onClick={() => setSelectedMonth(month)}
-                          className="px-4 py-2 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 font-semibold transition-colors flex items-center justify-center gap-2"
-                        >
-                          <Eye size={18} />
-                          View Details
-                        </button>
-                        <button
-                          onClick={() => handleDeleteMonth(month)}
-                          disabled={actionLoadingId === month.id}
-                          className="px-4 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60 sm:col-span-2"
-                        >
-                          <Trash2 size={16} />
-                          Delete
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => setSelectedMonth(month)}
+                        className="w-full px-4 py-2 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 font-semibold transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Eye size={18} />
+                        View Full Details
+                      </button>
                     </div>
                   </motion.div>
                 )}
@@ -430,8 +390,6 @@ function MonthDetailsModal({ month, projects, financeSnapshot, profiles = [], ag
     return [];
   };
 
-  const normalizePlatform = (platform) => String(platform || '').trim().toLowerCase();
-
   // Compute breakdowns from archived projects
   const { employeeSalaries, byProfile, byAgency, byBrand, totalRevenue, totalExpenses, netProfit } = useMemo(() => {
     const empMap = {};
@@ -466,42 +424,25 @@ function MonthDetailsModal({ month, projects, financeSnapshot, profiles = [], ag
         }
       }
 
-      const platform = normalizePlatform(p.platform);
       const profileId = p.profile_id ?? p.profileId ?? '';
+      const key = String(profileId || 'direct');
+      if (!profileMap[key]) profileMap[key] = { id: profileId, name: '', revenue: 0, count: 0 };
+      profileMap[key].revenue += orderDisplay;
+      profileMap[key].count += 1;
+      if (!profileId && !profileMap[key].name) profileMap[key].name = 'Direct / Other';
+
       const agencyId = p.agency_id ?? p.agencyId ?? '';
-      const brandId = p.brand_id ?? p.brandId ?? '';
-      const clientName = p.client_name || p.clientName || '';
-
-      const isFreelance = platform === 'fiverr' || platform === 'upwork';
-      const isAgency = platform === 'agency';
-      const isDirect = platform === 'direct';
-
-      // Freelance: Fiverr/Upwork projects only.
-      if (isFreelance || (!platform && profileId)) {
-        const pKey = String(profileId || `${platform || 'freelance'}-${clientName || 'unknown'}`);
-        if (!profileMap[pKey]) {
-          profileMap[pKey] = { id: profileId || null, name: clientName || '', revenue: 0, count: 0 };
-        }
-        profileMap[pKey].revenue += orderDisplay;
-        profileMap[pKey].count += 1;
-      }
-
-      // Agency: platform=Agency only.
-      if (isAgency || (!platform && agencyId)) {
-        const aKey = String(agencyId || `agency-${clientName || 'unknown'}`);
-        if (!agencyMap[aKey]) {
-          agencyMap[aKey] = { id: agencyId || null, name: clientName || '', revenue: 0, count: 0 };
-        }
+      const aKey = String(agencyId || 'none');
+      if (agencyId) {
+        if (!agencyMap[aKey]) agencyMap[aKey] = { id: agencyId, name: '', revenue: 0, count: 0 };
         agencyMap[aKey].revenue += orderDisplay;
         agencyMap[aKey].count += 1;
       }
 
-      // Direct: platform=Direct only.
-      if (isDirect || (!platform && brandId)) {
-        const bKey = String(brandId || `direct-${clientName || 'unknown'}`);
-        if (!brandMap[bKey]) {
-          brandMap[bKey] = { id: brandId || null, name: clientName || '', revenue: 0, count: 0 };
-        }
+      const brandId = p.brand_id ?? p.brandId ?? '';
+      const bKey = String(brandId || 'none');
+      if (brandId) {
+        if (!brandMap[bKey]) brandMap[bKey] = { id: brandId, name: '', revenue: 0, count: 0 };
         brandMap[bKey].revenue += orderDisplay;
         brandMap[bKey].count += 1;
       }
@@ -509,17 +450,17 @@ function MonthDetailsModal({ month, projects, financeSnapshot, profiles = [], ag
 
     // Resolve names from store
     const byProfileList = Object.entries(profileMap).map(([k, v]) => {
-      const name = v.id ? (profiles.find(pr => String(pr.id) === String(v.id))?.name || v.name || `Profile #${v.id}`) : (v.name || 'Unknown Freelance');
+      const name = v.id ? (profiles.find(pr => String(pr.id) === String(v.id))?.name || v.name || `Profile #${v.id}`) : (v.name || 'Direct / Other');
       return { ...v, name };
     }).filter(r => r.count > 0).sort((a, b) => b.revenue - a.revenue);
 
     const byAgencyList = Object.entries(agencyMap).map(([k, v]) => {
-      const name = v.id ? (agencies.find(ag => String(ag.id) === String(v.id))?.name || v.name || `Agency #${v.id}`) : (v.name || 'Unknown Agency');
+      const name = agencies.find(ag => String(ag.id) === String(v.id))?.name || `Agency #${v.id}`;
       return { ...v, name };
     }).filter(r => r.count > 0).sort((a, b) => b.revenue - a.revenue);
 
     const byBrandList = Object.entries(brandMap).map(([k, v]) => {
-      const name = v.id ? (brands.find(br => String(br.id) === String(v.id))?.name || v.name || `Brand #${v.id}`) : (v.name || 'Unknown Direct Client');
+      const name = brands.find(br => String(br.id) === String(v.id))?.name || `Brand #${v.id}`;
       return { ...v, name };
     }).filter(r => r.count > 0).sort((a, b) => b.revenue - a.revenue);
 
@@ -733,64 +674,18 @@ function MonthDetailsModal({ month, projects, financeSnapshot, profiles = [], ag
             <h3 className="font-semibold text-white mb-3">Archived Projects ({projects.length})</h3>
             <div className="space-y-2">
               {projects.map(project => {
-                const projectAmount = convert(project.amount || 0, project.currency || 'USD', currency, rate);
-                const assignedMembers = ensureAssigned(project.assigned);
-                const assignedWithCosts = assignedMembers.map((a) => {
-                  const name = a.name || a.employee_name || 'Unknown';
-                  const type = a.costType ?? a.cost_type ?? 'fixed';
-                  const rawValue = Number(a.costValue ?? a.cost_value ?? 0) || 0;
-                  const cost = type === 'percentage'
-                    ? (projectAmount * rawValue) / 100
-                    : convert(rawValue, 'PKR', currency, rate);
-                  return { name, type, rawValue, cost };
-                });
-                const computedTeamCost = assignedWithCosts.reduce((sum, a) => sum + a.cost, 0);
-                const teamCost = computedTeamCost || convert(Number(project.team_cost) || 0, project.currency || 'USD', currency, rate);
-                const profit = projectAmount - teamCost;
+                const teamCost = Number(project.team_cost) ?? 0;
+                const profit = Number(project.profit) ?? (Number(project.amount) || 0) - teamCost;
                 return (
                   <div key={project.id} className="p-3 rounded-xl bg-slate-800/50">
                     <div className="font-semibold text-white">{project.project_name}</div>
                     <div className="text-sm text-slate-400 mt-1">
-                      {project.client_name} • {project.platform} • {fmt(projectAmount)}
+                      {project.client_name} • {project.platform} • {fmt(convert(project.amount || 0, project.currency || 'USD', currency, rate))}
                     </div>
                     <div className="text-xs text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-0">
-                      <span>Service: {project.service || 'N/A'}</span>
-                      <span>Status: {project.status || 'Completed'}</span>
-                      <span>Employee Count: {assignedWithCosts.length}</span>
-                      <span>Team cost: {fmt(teamCost)}</span>
-                      <span>Profit: {fmt(profit)}</span>
+                      <span>Team cost: {fmt(convert(teamCost, project.currency || 'USD', currency, rate))}</span>
+                      <span>Profit: {fmt(convert(profit, project.currency || 'USD', currency, rate))}</span>
                     </div>
-                    <div className="text-xs text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-0">
-                      <span>Start: {project.start_date ? new Date(project.start_date).toLocaleDateString() : 'N/A'}</span>
-                      <span>End: {project.end_date ? new Date(project.end_date).toLocaleDateString() : 'N/A'}</span>
-                    </div>
-                    {assignedWithCosts.length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-slate-700/60">
-                        <div className="text-xs text-slate-400 mb-1">Assigned Employees</div>
-                        <div className="space-y-1">
-                          {assignedWithCosts.map((employee, idx) => (
-                            <div key={`${project.id}-${employee.name}-${idx}`} className="text-xs text-slate-300 flex flex-wrap items-center gap-x-2">
-                              <span className="font-medium text-slate-200">{employee.name}</span>
-                              <span>({employee.type === 'percentage' ? `${employee.rawValue}%` : `${employee.rawValue} PKR`})</span>
-                              <span>-</span>
-                              <span>Cost: {fmt(employee.cost)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {!!project.raw_source_link && (
-                      <div className="mt-2">
-                        <a
-                          href={project.raw_source_link}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs text-blue-400 hover:text-blue-300 underline break-all"
-                        >
-                          Source Link
-                        </a>
-                      </div>
-                    )}
                   </div>
                 );
               })}
