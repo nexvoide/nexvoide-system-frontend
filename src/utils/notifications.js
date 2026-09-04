@@ -52,12 +52,13 @@ export async function showBrowserNotification(title, options = {}) {
     return null;
   }
 
+  const { onClick, priority, ...notificationOptions } = options;
   const defaultOptions = {
     icon: '/logo.png',
     badge: '/logo.png',
     tag: options.tag || 'nexvoide-notification',
-    requireInteraction: options.priority === NOTIFICATION_PRIORITY.URGENT,
-    ...options,
+    requireInteraction: priority === NOTIFICATION_PRIORITY.URGENT,
+    ...notificationOptions,
   };
 
   try {
@@ -70,7 +71,7 @@ export async function showBrowserNotification(title, options = {}) {
     const notification = new Notification(title, defaultOptions);
     
     // Auto-close after 5 seconds (unless urgent)
-    if (defaultOptions.priority !== NOTIFICATION_PRIORITY.URGENT) {
+    if (priority !== NOTIFICATION_PRIORITY.URGENT) {
       setTimeout(() => {
         notification.close();
       }, 5000);
@@ -80,8 +81,8 @@ export async function showBrowserNotification(title, options = {}) {
     notification.onclick = () => {
       window.focus();
       notification.close();
-      if (options.onClick) {
-        options.onClick();
+      if (onClick) {
+        onClick();
       }
     };
 
@@ -166,6 +167,5 @@ export function formatNotificationMessage(type, data) {
       return data.message || 'New notification';
   }
 }
-
 
 

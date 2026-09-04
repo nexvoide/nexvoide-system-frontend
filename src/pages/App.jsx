@@ -278,6 +278,9 @@ function Shell() {
               <button
                 key={item.id}
                 onClick={() => {
+                  if (item.id === 'chat') {
+                    useNotificationStore.getState().initBrowserNotifications();
+                  }
                   setTab(item.id);
                   setMobileMenuOpen(false);
                 }}

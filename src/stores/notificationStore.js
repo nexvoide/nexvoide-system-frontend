@@ -88,7 +88,9 @@ export const useNotificationStore = create((set, get) => ({
       const unreadCount = newNotifications.filter(n => !n.read).length;
 
       // Show browser notification if enabled (even if not hidden, but prioritize when hidden)
-      if (state.browserNotificationsEnabled) {
+      const browserPermissionGranted = typeof Notification !== 'undefined'
+        && Notification.permission === 'granted';
+      if (state.browserNotificationsEnabled || browserPermissionGranted) {
         // Always show for urgent, or show when tab is hidden
         if (notif.type === 'chat_message' || notif.priority === NOTIFICATION_PRIORITY.URGENT || document.hidden) {
           showBrowserNotification(notif.title, {
