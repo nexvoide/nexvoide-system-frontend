@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Hash, Plus, ChevronDown, ChevronRight, Video, Palette, Users, FolderPlus, GripVertical, Trash2, Search, X } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore.js';
-import { useUnreadMessages } from '../../hooks/useUnreadMessages.js';
 
 // Legacy icon mapping (for fallback)
 const sectionIcons = {
@@ -26,9 +25,15 @@ export default function ChatSidebar({
   allUsers = [],
   employees = [],
   onClose,
+  unreadState,
 }) {
   const { user } = useAppStore();
-  const { unreadCounts, mentionCounts, hasUnread, hasMentions } = useUnreadMessages(channels, selectedChannel);
+  const {
+    unreadCounts = {},
+    mentionCounts = {},
+    hasUnread = () => false,
+    hasMentions = () => false,
+  } = unreadState || {};
   
   const [expandedSections, setExpandedSections] = useState(
     sections.reduce((acc, section) => {

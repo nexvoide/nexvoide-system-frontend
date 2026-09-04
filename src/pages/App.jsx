@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import {
-  Moon, Sun, Bell, Search, LogOut, Menu, X,
-  LayoutDashboard, Briefcase, Users, Globe, Wallet, Settings, Activity, MessageSquare, Archive
+  LogOut, Menu, X,
+  LayoutDashboard, Briefcase, Users, Wallet, Settings, Activity, MessageSquare, Archive
 } from "lucide-react";
 import { useAppStore } from "../stores/appStore.js";
 import Dashboard from "../sections/Dashboard.jsx";
@@ -11,8 +11,6 @@ import Finance from "../sections/Finance.jsx";
 import Setup from "../sections/Setup.jsx";
 import SettingsSection from "../sections/Settings.jsx";
 import ActivityLogs from "../sections/ActivityLogs.jsx";
-import ConnectivityStatus from "../components/ConnectivityStatus.jsx";
-import Notifications from "../components/Notifications.jsx";
 import Login from "../components/Login.jsx";
 import WelcomeAnimation from "../components/WelcomeAnimation.jsx";
 import RoleBadge from "../components/RoleBadge.jsx";
@@ -25,6 +23,8 @@ import { supabase, TABLES } from "../lib/supabase.js";
 import { useNotificationStore } from "../stores/notificationStore.js";
 import { NOTIFICATION_PRIORITY, NOTIFICATION_TYPES } from "../utils/notifications.js";
 import { syncPushSubscription } from "../utils/pushNotifications.js";
+import { useUnreadMessages } from "../hooks/useUnreadMessages.js";
+import { useChatStore } from "../stores/chatStore.js";
 
 function Shell() {
   const { currency, rate, setCurrency, setRate, initialize, loading, user, userRole, allUsers, authInitialized, loadUser, clearUser } = useAppStore();
@@ -32,10 +32,13 @@ function Shell() {
     const requestedTab = new URLSearchParams(window.location.search).get('tab');
     return requestedTab || 'dashboard';
   });
-  const [dark, setDark] = useState(true);
   const [showLogin, setShowLogin] = useState(true); // Default to showing login
   const [showWelcome, setShowWelcome] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const selectedChatChannel = useChatStore(state => state.selectedChannel);
+  const unreadState = useUnreadMessages([], tab === 'chat' ? selectedChatChannel : null);
+  const totalUnreadChatMessages = Object.values(unreadState.unreadCounts)
+    .reduce((total, count) => total + Number(count || 0), 0);
 
   // Initialize app ONCE on mount - FIXED: Empty dependency array prevents re-runs
   useEffect(() => {
@@ -71,22 +74,9 @@ function Shell() {
   }, [user, userRole]);
 
   useEffect(() => {
-    // initialize from localStorage
-    const saved = localStorage.getItem("theme");
-    if (saved === "light") setDark(false);
-    if (saved === "dark") setDark(true);
+    document.documentElement.classList.add("dark");
+    localStorage.setItem("theme", "dark");
   }, []);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    if (dark) {
-      root.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-    } else {
-      root.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-    }
-  }, [dark]);
 
   useEffect(() => {
     if (!supabase || !user?.id) return undefined;
@@ -296,7 +286,15 @@ function Shell() {
                   }`}
               >
                 <Icon size={18} />
-                {item.label}
+                <span>{item.label}</span>
+                {item.id === 'chat' && totalUnreadChatMessages > 0 && (
+                  <span
+                    className="ml-auto inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white shadow-sm"
+                    aria-label={`${totalUnreadChatMessages} unread chat messages`}
+                  >
+                    {totalUnreadChatMessages > 99 ? '99+' : totalUnreadChatMessages}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -316,8 +314,7 @@ function Shell() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col px-2 sm:px-3 md:px-4 py-2 sm:py-3 min-h-screen overflow-x-hidden">
-        {/* Top Bar with Connectivity Status */}
-        <div className="flex items-center justify-between md:justify-end gap-2 sm:gap-3 mb-3 sm:mb-4">
+        <div className="flex items-center md:hidden mb-3 sm:mb-4">
           {/* Mobile Menu Button */}
           <button
             onClick={() => setMobileMenuOpen(true)}
@@ -326,18 +323,6 @@ function Shell() {
           >
             <Menu size={20} className="text-slate-700 dark:text-slate-300" />
           </button>
-          
-          <div className="flex items-center gap-2 md:gap-3 ml-auto">
-            <Notifications />
-            <ConnectivityStatus />
-            <button
-              onClick={() => setDark(!dark)}
-              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-              title={dark ? "Switch to light mode" : "Switch to dark mode"}
-            >
-              {dark ? <Sun size={18} className="text-slate-700 dark:text-slate-300" /> : <Moon size={18} className="text-slate-700 dark:text-slate-300" />}
-            </button>
-          </div>
         </div>
 
         <div className="max-w-7xl mx-auto w-full px-0 sm:px-2 md:px-0">
@@ -347,7 +332,7 @@ function Shell() {
           {tab === "finance" && <Finance />}
           {tab === "setup" && <Setup />}
           {tab === "activity" && <ActivityLogs />}
-          {tab === "chat" && <Chat onBack={() => setTab("dashboard")} />}
+          {tab === "chat" && <Chat onBack={() => setTab("dashboard")} unreadState={unreadState} />}
           {tab === "settings" && <SettingsSection />}
           {tab === "users" && <UserManagement />}
           {tab === "archives" && <MonthlyArchives />}

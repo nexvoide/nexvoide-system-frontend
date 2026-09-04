@@ -14,14 +14,14 @@ export function useUnreadMessages(channels = [], selectedChannelId = null) {
 
   // Load initial unread counts
   useEffect(() => {
-    if (!userId || !supabase || channels.length === 0) return;
+    if (!userId || !supabase) return;
 
     const loadUnreadCounts = async () => {
       try {
         // Get unread counts for all channels
         const { data: readData, error: readError } = await supabase
           .from('user_channel_reads')
-          .select('channel_id, unread_count, last_read_message_id')
+          .select('channel_id, unread_count, last_read_message_id, last_read_at')
           .eq('user_id', userId);
 
         if (readError) {
@@ -29,9 +29,30 @@ export function useUnreadMessages(channels = [], selectedChannelId = null) {
           return;
         }
 
+        const readState = {};
+        readData?.forEach(item => {
+          readState[item.channel_id] = item;
+        });
+
+        const { data: receivedMessages, error: messagesError } = await supabase
+          .from(TABLES.messages)
+          .select('channel_id, author_id, created_at')
+          .neq('author_id', userId);
+
+        if (messagesError) {
+          console.warn('Failed to calculate unread messages:', messagesError);
+        }
+
         const counts = {};
         readData?.forEach(item => {
-          counts[item.channel_id] = item.unread_count || 0;
+          counts[item.channel_id] = Number(item.unread_count || 0);
+        });
+        receivedMessages?.forEach(message => {
+          const channelReadState = readState[message.channel_id];
+          const lastReadAt = channelReadState?.last_read_at;
+          if (lastReadAt && new Date(message.created_at).getTime() > new Date(lastReadAt).getTime()) {
+            counts[message.channel_id] = (counts[message.channel_id] || 0) + 1;
+          }
         });
 
         setUnreadCounts(counts);

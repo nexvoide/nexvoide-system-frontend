@@ -10,7 +10,7 @@ import ChannelDialog from '../components/chat/ChannelDialog.jsx';
 import UserManagementDialog from '../components/chat/UserManagementDialog.jsx';
 import SectionDialog from '../components/chat/SectionDialog.jsx';
 
-export default function Chat({ onBack }) {
+export default function Chat({ onBack, unreadState }) {
   const { user, userRole, allUsers = [] } = useAppStore();
   const {
     channels,
@@ -94,7 +94,7 @@ export default function Chat({ onBack }) {
 
   if (isLoading) {
     return (
-      <div className="chat-shell flex h-[calc(100dvh-92px)] md:h-[calc(100vh-104px)] min-h-0 overflow-hidden rounded-none md:rounded-[20px] border border-[#1b283d]/80 bg-[#090e1a] text-white">
+      <div className="chat-shell flex h-[calc(100dvh-92px)] md:h-[calc(100dvh-24px)] min-h-0 overflow-hidden rounded-none md:rounded-[20px] border border-[#1b283d]/80 bg-[#090e1a] text-white">
         <div className="hidden md:flex w-[300px] lg:w-[320px] flex-col border-r border-slate-400/10 bg-[#080d18] p-6">
           <div className="h-6 w-36 rounded bg-slate-700/30 animate-pulse" />
           <div className="mt-8 h-11 w-full rounded-xl bg-slate-700/20 animate-pulse" />
@@ -115,7 +115,7 @@ export default function Chat({ onBack }) {
   }
 
   return (
-    <div className="chat-shell flex flex-col md:flex-row h-[calc(100dvh-92px)] md:h-[calc(100vh-104px)] min-h-0 bg-[#090e1a] text-white rounded-none md:rounded-[20px] overflow-hidden relative border border-[#1b283d]/80">
+    <div className="chat-shell flex flex-col md:flex-row h-[calc(100dvh-92px)] md:h-[calc(100dvh-24px)] min-h-0 bg-[#090e1a] text-white rounded-none md:rounded-[20px] overflow-hidden relative border border-[#1b283d]/80">
 
       {/* Mobile Sidebar Overlay */}
       {showSidebar && (
@@ -157,6 +157,7 @@ export default function Chat({ onBack }) {
         onReorderChannels={reorderChannels}
         allUsers={allUsers}
         onClose={() => setShowSidebar(false)}
+        unreadState={unreadState}
       />
       </div>
 
