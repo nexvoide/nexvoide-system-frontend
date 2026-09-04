@@ -174,6 +174,7 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.VIEW_PROJECTS,
     PERMISSIONS.VIEW_OWN_PROJECTS,
     PERMISSIONS.CREATE_PROJECTS,
+    PERMISSIONS.VIEW_CHAT,
     // No finance, team, setup, settings, or activity logs access
   ],
 };

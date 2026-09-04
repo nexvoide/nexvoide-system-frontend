@@ -186,7 +186,7 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
   }
 
   function addAssignee() {
-    setForm((f) => ({ ...f, assigned: [...(f.assigned || []), { name: "", costType: "fixed", costValue: "" }] }));
+    setForm((f) => ({ ...f, assigned: [...(f.assigned || []), { employeeId: "", name: "", costType: "fixed", costValue: "" }] }));
   }
 
   function removeAssignee(idx) {
@@ -548,7 +548,7 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
           ...f,
           assigned: [
             ...(f.assigned||[]),
-            { name: emp.name, costType: 'fixed', costValue: '' }
+            { employeeId: emp.id, name: emp.name, costType: 'fixed', costValue: '' }
           ]
         }));
       }} />
@@ -759,4 +759,3 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
 
   return <form onSubmit={submit}>{renderForm(false)}</form>;
 }
-

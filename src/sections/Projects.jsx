@@ -70,6 +70,15 @@ export default function Projects() {
     return [];
   };
 
+  const currentUserIdentity = String(user?.userId || user?.user_id || user?.name || '').trim().toLowerCase();
+  const showEmployeePaymentColumn = canViewFinanceDetails || (
+    currentUserIdentity !== '' && safeProjects.some((project) =>
+      ensureAssigned(project.assigned).some((assignee) =>
+        String(assignee?.name || '').trim().toLowerCase() === currentUserIdentity
+      )
+    )
+  );
+
   // Helper to compute remaining time (ms) until deadline/endDate; overdue => negative
   // Completed projects are never overdue
   const getRemainingMs = (p) => {
@@ -257,7 +266,7 @@ export default function Projects() {
                 <th className="p-2 text-left text-xs md:text-sm font-semibold">Project</th>
                 <th className="p-2 text-left text-xs md:text-sm font-semibold">Assigned</th>
                 {canViewFinanceDetails && <th className="p-2 text-left text-xs md:text-sm font-semibold">Order</th>}
-                {(canViewFinanceDetails || (user && user.userId)) && <th className="p-2 text-left text-xs md:text-sm font-semibold">Employee</th>}
+                {showEmployeePaymentColumn && <th className="p-2 text-left text-xs md:text-sm font-semibold">Employee</th>}
                 {canViewFinanceDetails && <th className="p-2 text-left text-xs md:text-sm font-semibold">Profit</th>}
                 <th className="p-2 text-left text-xs md:text-sm font-semibold">Status</th>
                 <th className="p-2 text-left text-xs md:text-sm font-semibold">Deadline</th>
@@ -322,7 +331,11 @@ export default function Projects() {
                     <td className="p-2 text-xs md:text-sm font-medium">{p.projectName}</td>
                     <td className="p-2 text-xs md:text-sm">{assignedArray.map(a=>a?.name || '').filter(Boolean).join(', ') || 'Unassigned'}</td>
                     {canViewFinanceDetails && <td className="p-2">{order.toFixed(2)} {currency}</td>}
-                    {canSeeTeamPayment && <td className="p-2">{emp.toFixed(2)} {currency}</td>}
+                    {showEmployeePaymentColumn && (
+                      <td className="p-2">
+                        {canSeeTeamPayment ? `${emp.toFixed(2)} ${currency}` : '—'}
+                      </td>
+                    )}
                     {canViewFinanceDetails && <td className="p-2">{profit.toFixed(2)} {currency}</td>}
                     <td className="p-2">
                       <span className="inline-flex items-center px-2 py-1 rounded-xl bg-slate-100 dark:bg-slate-800">{p.status}</span>

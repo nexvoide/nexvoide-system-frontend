@@ -713,10 +713,38 @@ export const useAppStore = create((set, get) => ({
         console.warn('Failed to remove user from online status:', e);
       }
     }
-    const { supabase } = await import('../lib/supabase.js');
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-    set({ user: null, userRole: null });
+    try {
+      const { supabase } = await import('../lib/supabase.js');
+      if (supabase) {
+        const { data, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
+          console.warn('Unable to verify the current auth session during logout:', sessionError);
+        } else if (data?.session) {
+          const { error: signOutError } = await supabase.auth.signOut();
+          if (signOutError && signOutError.name !== 'AuthSessionMissingError') {
+            console.warn('Remote logout failed; local session will still be cleared:', signOutError);
+          }
+        }
+      }
+    } catch (error) {
+      if (error?.name !== 'AuthSessionMissingError') {
+        console.warn('Remote logout failed; local session will still be cleared:', error);
+      }
+    } finally {
+      set({
+        user: null,
+        userRole: null,
+        projects: [],
+        employees: [],
+        profiles: [],
+        agencies: [],
+        brands: [],
+        activityLogs: [],
+        allUsers: [],
+        initialized: false,
+        loading: false,
+      });
+    }
   },
 
   // Login function - Simple and straightforward

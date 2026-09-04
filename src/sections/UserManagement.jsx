@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { Plus, Pencil, Trash2, X, User, Shield, Users, Briefcase, Crown, Eye, EyeOff, Search, ChevronDown, Check } from "lucide-react";
 import { useAppStore } from "../stores/appStore.js";
@@ -142,6 +143,7 @@ export default function UserManagement() {
       user_id: "",
       active: true,
       avatar: "",
+      editorIds: [],
     });
   };
   
@@ -391,8 +393,8 @@ export default function UserManagement() {
       </div>
 
       {/* User Form Modal */}
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 sm:p-2 md:p-4 overflow-y-auto">
+      {open && createPortal(
+        <div className="fixed inset-0 z-[2147483647] flex items-start sm:items-center justify-center p-0 sm:p-2 md:p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="user-form-title">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -402,10 +404,12 @@ export default function UserManagement() {
           >
             <div className="p-4 sm:p-4 md:p-6 flex-shrink-0 sticky top-0 bg-white dark:bg-slate-950 z-10 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
+                <h2 id="user-form-title" className="text-lg sm:text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
                   {editing ? "Edit User" : "Create New User"}
                 </h2>
                 <button
+                  type="button"
+                  aria-label="Close user form"
                   onClick={handleClose}
                   className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
                 >
@@ -734,7 +738,8 @@ export default function UserManagement() {
               </div>
             </div>
           </motion.div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

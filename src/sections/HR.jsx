@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useAppStore, convert } from "../stores/appStore.js";
 import { generateSalaryPDF } from "../utils/pdfGenerator.js";
 import {
@@ -705,7 +706,7 @@ export default function HR() {
         )}
       </div>
 
-      {open && (
+      {open && createPortal(
         <EmployeeDrawer
           initial={editing}
           onClose={() => {
@@ -745,7 +746,8 @@ export default function HR() {
               );
             }
           }}
-        />
+        />,
+        document.body
       )}
     </div>
   );
@@ -829,15 +831,16 @@ function EmployeeDrawer({ initial, onClose, onSave }) {
     onSave(payload);
   }
   return (
-    <div className='fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 sm:p-2 md:p-0 overflow-y-auto'>
+    <div className='fixed inset-0 z-[2147483647] flex items-start sm:items-center justify-center p-0 sm:p-2 md:p-0 overflow-y-auto' role='dialog' aria-modal='true' aria-labelledby='employee-drawer-title'>
       <div className='absolute inset-0 bg-black/60 backdrop-blur-sm md:bg-black/20' onClick={onClose} />
       <div className='relative w-full max-w-md min-h-full md:min-h-0 md:h-auto md:max-h-[90vh] glass rounded-none md:rounded-xl md:rounded-l-2xl md:rounded-r-none p-4 sm:p-4 overflow-hidden flex flex-col my-0 md:my-auto md:ml-auto'>
         <div className='flex items-center justify-between mb-3 sm:mb-4 flex-shrink-0 sticky top-0 bg-transparent z-10 pb-2'>
-          <div className='text-base sm:text-lg font-semibold'>
+          <div id='employee-drawer-title' className='text-base sm:text-lg font-semibold'>
             {initial ? "Edit Employee" : "Add Employee"}
           </div>
           <button
             type='button'
+            aria-label='Close employee form'
             className='glass p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center'
             onClick={onClose}>
             <X size={18} />

@@ -172,10 +172,20 @@ function Shell() {
   const handleLogout = async () => {
     try {
       await clearUser();
+    } catch (error) {
+      console.warn('Logout cleanup completed with a non-fatal error:', error);
+    } finally {
+      useChatStore.setState({
+        channels: [],
+        messages: {},
+        sections: [],
+        selectedChannel: null,
+        isLoading: true,
+      });
+      localStorage.removeItem('nexvoide-chat');
       setShowLogin(true);
       setTab("dashboard");
-    } catch (error) {
-      console.error('Logout failed:', error);
+      setMobileMenuOpen(false);
     }
   };
 

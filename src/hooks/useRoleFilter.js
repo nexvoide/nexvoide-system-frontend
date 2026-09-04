@@ -10,7 +10,7 @@ import { ROLES, PERMISSIONS, hasPermission, normalizeRoles, hasRole } from '../u
  * Filter projects based on user role
  */
 export function useFilteredProjects() {
-  const { projects, user, userRole } = useAppStore();
+  const { projects, employees, user } = useAppStore();
 
   return useMemo(() => {
     if (!user || !user.role) return projects;
@@ -35,12 +35,40 @@ export function useFilteredProjects() {
 
     // If user has EMPLOYEE role, include projects assigned to them
     if (hasRole(roles, ROLES.EMPLOYEE)) {
-      if (user.userId) {
-        projects.filter(p => {
-          const assigned = Array.isArray(p.assigned) ? p.assigned : [];
-          return assigned.some(a => a.name === user.userId || a.name === user.name);
-        }).forEach(p => matchingProjects.add(p.id));
-      }
+      const normalizeIdentity = (value) => String(value || '').trim().toLowerCase();
+      const employeeIdentities = new Set(
+        [user.id, user.userId, user.user_id, user.name]
+          .map(normalizeIdentity)
+          .filter(Boolean)
+      );
+      employees.forEach((employee) => {
+        const employeeName = normalizeIdentity(employee?.name || employee?.employee_name);
+        if (employeeName && employeeIdentities.has(employeeName)) {
+          [employee.id, employee.name, employee.employee_name]
+            .map(normalizeIdentity)
+            .filter(Boolean)
+            .forEach((identity) => employeeIdentities.add(identity));
+        }
+      });
+
+      projects.filter((project) => {
+        let assigned = project.assigned;
+        if (typeof assigned === 'string') {
+          try {
+            assigned = JSON.parse(assigned);
+          } catch {
+            assigned = [];
+          }
+        }
+        if (!Array.isArray(assigned)) return false;
+
+        return assigned.some((assignee) =>
+          [assignee?.employeeId, assignee?.employee_id, assignee?.id, assignee?.name]
+            .map(normalizeIdentity)
+            .filter(Boolean)
+            .some((identity) => employeeIdentities.has(identity))
+        );
+      }).forEach(project => matchingProjects.add(project.id));
     }
 
     // If user has CLIENT role, include their own projects
@@ -65,7 +93,7 @@ export function useFilteredProjects() {
 
     // Return unique projects that match any of the user's roles
     return projects.filter(p => matchingProjects.has(p.id));
-  }, [projects, user]);
+  }, [projects, employees, user]);
 }
 
 /**
@@ -207,4 +235,3 @@ export function useCanViewActivityLogs() {
     return hasPermission(user.role, PERMISSIONS.VIEW_ACTIVITY_LOGS);
   }, [user]);
 }
-
