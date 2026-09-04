@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { MessageSquare, Loader2 } from 'lucide-react';
 import { useChatStore } from '../stores/chatStore.js';
@@ -41,12 +41,12 @@ export default function Chat({ onBack, unreadState }) {
       .map(value => String(value).trim().toLocaleLowerCase())
   );
 
-  const userChannels = channels.filter(channel => {
+  const userChannels = useMemo(() => channels.filter(channel => {
     if (hasManagementAccess) return true;
-    return channel.memberIds.some(memberId =>
+    return (channel.memberIds || []).some(memberId =>
       userIdentitySet.has(String(memberId).trim().toLocaleLowerCase())
     );
-  });
+  }), [channels, hasManagementAccess, user?.id]);
 
   // Get selected channel data
   const currentChannel = userChannels.find(ch => ch.id === selectedChannel);
@@ -66,14 +66,21 @@ export default function Chat({ onBack, unreadState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty array = only run on mount, preventing repeated initialization
 
-  // Auto-select first channel if none selected
+  // Keep persisted channel selection valid and select the first accessible channel.
   useEffect(() => {
-    if (!isLoading && !selectedChannel && userChannels.length > 0) {
-      selectChannel(userChannels[0].id);
-    }
+    if (isLoading) return;
+    const selectionIsAccessible = userChannels.some(channel => channel.id === selectedChannel);
+    if (!selectionIsAccessible) selectChannel(userChannels[0]?.id || null);
   }, [selectedChannel, userChannels, selectChannel, isLoading]);
 
-  const [showSidebar, setShowSidebar] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches && !selectedChannel
+  );
+
+  useEffect(() => {
+    if (isLoading || currentChannel || !window.matchMedia('(max-width: 767px)').matches) return;
+    setShowSidebar(true);
+  }, [isLoading, currentChannel]);
 
   useEffect(() => {
     if (!window.matchMedia('(max-width: 767px)').matches) return undefined;
