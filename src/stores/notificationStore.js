@@ -90,11 +90,12 @@ export const useNotificationStore = create((set, get) => ({
       // Show browser notification if enabled (even if not hidden, but prioritize when hidden)
       if (state.browserNotificationsEnabled) {
         // Always show for urgent, or show when tab is hidden
-        if (notif.priority === NOTIFICATION_PRIORITY.URGENT || document.hidden) {
+        if (notif.type === 'chat_message' || notif.priority === NOTIFICATION_PRIORITY.URGENT || document.hidden) {
           showBrowserNotification(notif.title, {
             body: notif.message,
             priority: notif.priority,
             tag: notif.id,
+            data: notif.data,
             onClick: () => {
               window.focus();
             },
@@ -179,4 +180,3 @@ export const useNotificationStore = create((set, get) => ({
     );
   },
 }));
-

@@ -12,6 +12,7 @@ export const NOTIFICATION_TYPES = {
   EMPLOYEE_ADDED: 'employee_added',
   SETTINGS_CHANGED: 'settings_changed',
   SYSTEM: 'system',
+  CHAT_MESSAGE: 'chat_message',
 };
 
 // Notification priorities
@@ -46,7 +47,7 @@ export async function requestNotificationPermission() {
 /**
  * Show browser notification
  */
-export function showBrowserNotification(title, options = {}) {
+export async function showBrowserNotification(title, options = {}) {
   if (!('Notification' in window) || Notification.permission !== 'granted') {
     return null;
   }
@@ -60,6 +61,12 @@ export function showBrowserNotification(title, options = {}) {
   };
 
   try {
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification(title, defaultOptions);
+      return true;
+    }
+
     const notification = new Notification(title, defaultOptions);
     
     // Auto-close after 5 seconds (unless urgent)
@@ -159,7 +166,6 @@ export function formatNotificationMessage(type, data) {
       return data.message || 'New notification';
   }
 }
-
 
 
 

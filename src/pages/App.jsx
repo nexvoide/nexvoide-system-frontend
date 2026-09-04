@@ -21,10 +21,16 @@ import { getFilteredNavItems, ROLE_LABELS, normalizeRoles } from "../utils/permi
 import UserManagement from "../sections/UserManagement.jsx";
 import MonthlyArchives from "../sections/MonthlyArchives.jsx";
 import Chat from "../sections/Chat.jsx";
+import { supabase, TABLES } from "../lib/supabase.js";
+import { useNotificationStore } from "../stores/notificationStore.js";
+import { NOTIFICATION_PRIORITY, NOTIFICATION_TYPES } from "../utils/notifications.js";
 
 function Shell() {
-  const { currency, rate, setCurrency, setRate, initialize, loading, user, userRole, authInitialized, loadUser, clearUser } = useAppStore();
-  const [tab, setTab] = useState("dashboard");
+  const { currency, rate, setCurrency, setRate, initialize, loading, user, userRole, allUsers, authInitialized, loadUser, clearUser } = useAppStore();
+  const [tab, setTab] = useState(() => {
+    const requestedTab = new URLSearchParams(window.location.search).get('tab');
+    return requestedTab || 'dashboard';
+  });
   const [dark, setDark] = useState(true);
   const [showLogin, setShowLogin] = useState(true); // Default to showing login
   const [showWelcome, setShowWelcome] = useState(false);
@@ -80,6 +86,52 @@ function Shell() {
       localStorage.setItem("theme", "light");
     }
   }, [dark]);
+
+  useEffect(() => {
+    if (!supabase || !user?.id) return undefined;
+
+    const subscription = supabase
+      .channel(`app-chat-notifications:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: TABLES.messages },
+        async ({ new: message }) => {
+          if (!message?.id || String(message.author_id) === String(user.id)) return;
+
+          const sender = allUsers.find(candidate => String(candidate.id) === String(message.author_id));
+          const { data: channel } = await supabase
+            .from(TABLES.channels)
+            .select('name')
+            .eq('id', message.channel_id)
+            .maybeSingle();
+
+          const senderName = sender?.name || sender?.username || 'New message';
+          const channelName = channel?.name || 'Chat';
+          const messagePreview = String(message.content || '').trim() || 'Sent an attachment';
+
+          useNotificationStore.getState().addNotification({
+            id: `chat-message-${message.id}`,
+            type: NOTIFICATION_TYPES.CHAT_MESSAGE,
+            title: `${senderName} in ${channelName}`,
+            message: messagePreview.length > 120 ? `${messagePreview.slice(0, 117)}…` : messagePreview,
+            priority: NOTIFICATION_PRIORITY.HIGH,
+            userId: user.id,
+            data: {
+              messageId: message.id,
+              channelId: message.channel_id,
+              url: '/?tab=chat',
+            },
+          }, user, userRole);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription).catch(error => {
+        console.warn('Failed to remove chat notification subscription:', error);
+      });
+    };
+  }, [user?.id, userRole, allUsers]);
 
   // Get filtered navigation items based on role
   const navItems = useMemo(() => {

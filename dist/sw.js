@@ -1,6 +1,6 @@
 // Service Worker for Nexvoide Management PWA
-const CACHE_NAME = 'nexvoide-v1';
-const RUNTIME_CACHE = 'nexvoide-runtime-v1';
+const CACHE_NAME = 'nexvoide-v2';
+const RUNTIME_CACHE = 'nexvoide-runtime-v2';
 
 // Assets to cache on install
 const PRECACHE_ASSETS = [
@@ -124,9 +124,14 @@ self.addEventListener('push', (event) => {
 // Notification click handler
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const targetUrl = event.notification.data?.url || '/?tab=chat';
   event.waitUntil(
-    clients.openWindow('/')
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      const existingClient = windowClients[0];
+      if (existingClient) {
+        return existingClient.focus().then(() => existingClient.navigate(targetUrl));
+      }
+      return clients.openWindow(targetUrl);
+    })
   );
 });
-
-
