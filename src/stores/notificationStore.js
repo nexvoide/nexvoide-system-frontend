@@ -6,6 +6,7 @@ import {
   shouldUserReceiveNotification,
   NOTIFICATION_PRIORITY,
 } from '../utils/notifications.js';
+import { enablePushNotifications } from '../utils/pushNotifications.js';
 
 // Load from localStorage
 const loadNotifications = () => {
@@ -46,7 +47,8 @@ export const useNotificationStore = create((set, get) => ({
   // Initialize browser notifications
   async initBrowserNotifications() {
     try {
-      const enabled = await requestNotificationPermission();
+      const permissionEnabled = await requestNotificationPermission();
+      const enabled = permissionEnabled ? await enablePushNotifications() : false;
       set({ browserNotificationsEnabled: enabled });
       saveNotifications(get().notifications, enabled);
       

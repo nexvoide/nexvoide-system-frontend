@@ -1,6 +1,6 @@
 // Service Worker for Nexvoide Management PWA
-const CACHE_NAME = 'nexvoide-v2';
-const RUNTIME_CACHE = 'nexvoide-runtime-v2';
+const CACHE_NAME = 'nexvoide-v3';
+const RUNTIME_CACHE = 'nexvoide-runtime-v3';
 
 // Assets to cache on install
 const PRECACHE_ASSETS = [
@@ -109,15 +109,27 @@ self.addEventListener('sync', (event) => {
 
 // Push notifications (optional)
 self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data?.json() || {};
+  } catch {
+    payload = { body: event.data?.text() || 'New message' };
+  }
+
   const options = {
-    body: event.data ? event.data.text() : 'New notification',
+    body: payload.body || 'New message',
     icon: '/icon-192.png',
     badge: '/icon-144.png',
     vibrate: [200, 100, 200],
+    silent: false,
+    renotify: true,
+    tag: payload.tag || 'nexvoide-chat-message',
+    timestamp: payload.timestamp || Date.now(),
+    data: payload.data || { url: '/?tab=chat' },
   };
 
   event.waitUntil(
-    self.registration.showNotification('Nexvoide Management', options)
+    self.registration.showNotification(payload.title || 'Nexvoide Chat', options)
   );
 });
 

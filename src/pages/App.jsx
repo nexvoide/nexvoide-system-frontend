@@ -24,6 +24,7 @@ import Chat from "../sections/Chat.jsx";
 import { supabase, TABLES } from "../lib/supabase.js";
 import { useNotificationStore } from "../stores/notificationStore.js";
 import { NOTIFICATION_PRIORITY, NOTIFICATION_TYPES } from "../utils/notifications.js";
+import { syncPushSubscription } from "../utils/pushNotifications.js";
 
 function Shell() {
   const { currency, rate, setCurrency, setRate, initialize, loading, user, userRole, allUsers, authInitialized, loadUser, clearUser } = useAppStore();
@@ -89,6 +90,10 @@ function Shell() {
 
   useEffect(() => {
     if (!supabase || !user?.id) return undefined;
+
+    syncPushSubscription().catch(error => {
+      console.warn('Unable to synchronize push notification subscription:', error);
+    });
 
     const subscription = supabase
       .channel(`app-chat-notifications:${user.id}`)
