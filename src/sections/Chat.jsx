@@ -76,35 +76,12 @@ export default function Chat() {
   const [showSidebar, setShowSidebar] = useState(false);
 
   return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-120px)] md:h-[calc(100vh-120px)] bg-[#010333] text-white rounded-xl overflow-hidden relative">
-      {/* Mobile Sidebar Toggle */}
-      <div className="md:hidden flex items-center justify-between p-3 border-b border-slate-800/50 bg-[#0a0a1a]">
-        <button
-          onClick={() => setShowSidebar(!showSidebar)}
-          className="p-2 rounded-lg hover:bg-slate-800/50 transition-colors"
-        >
-          <Menu size={20} className="text-white" />
-        </button>
-        {currentChannel && (
-          <div className="flex items-center gap-2">
-            <Hash size={16} className="text-[#3b82f6]" />
-            <span className="font-semibold text-sm truncate">{currentChannel.name}</span>
-          </div>
-        )}
-        {showSidebar && (
-          <button
-            onClick={() => setShowSidebar(false)}
-            className="p-2 rounded-lg hover:bg-slate-800/50 transition-colors"
-          >
-            <X size={20} className="text-white" />
-          </button>
-        )}
-      </div>
+    <div className="chat-shell flex flex-col md:flex-row h-[calc(100dvh-92px)] md:h-[calc(100vh-104px)] min-h-0 bg-[#090e1a] text-white rounded-none md:rounded-[20px] overflow-hidden relative border border-[#1b283d]/80">
 
       {/* Mobile Sidebar Overlay */}
       {showSidebar && (
-        <div 
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 md:hidden"
+        <div
+          className="fixed inset-0 bg-black/70 z-40 md:hidden"
           onClick={() => setShowSidebar(false)}
         />
       )}
@@ -140,11 +117,12 @@ export default function Chat() {
         onReorderSections={reorderSections}
         onReorderChannels={reorderChannels}
         allUsers={allUsers}
+        onClose={() => setShowSidebar(false)}
       />
       </div>
 
       {/* Main Chat Window */}
-      <div className="flex-1 flex flex-col bg-[#010333]">
+      <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col bg-[#010333]">
         {selectedChannel && currentChannel ? (
           <ChatWindow
             channel={currentChannel}
@@ -158,6 +136,7 @@ export default function Chat() {
               setEditingChannel(currentChannel);
               setShowCreateChannel(true);
             }}
+            onOpenSidebar={() => setShowSidebar(true)}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center">

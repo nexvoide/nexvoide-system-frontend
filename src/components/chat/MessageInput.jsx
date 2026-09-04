@@ -508,7 +508,7 @@ export default function MessageInput({
             : "This channel is read-only. Only admins can send messages."}
         </div>
       )}
-      <form onSubmit={handleSubmit} className='flex items-end gap-2'>
+      <form onSubmit={handleSubmit} className='flex items-end gap-2 relative'>
         {/* Emoji Picker */}
         {showEmojis && (
           <motion.div
@@ -637,11 +637,10 @@ export default function MessageInput({
             }
             rows={1}
             disabled={isDisabled}
-            className={`w-full py-3.5 pl-4 pr-24 bg-white/[0.045] border border-white/[0.09] rounded-2xl text-white placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400/40 transition-all duration-200 shadow-[0_8px_30px_rgba(0,0,0,0.16)] ${
+            className={`block w-full min-h-[62px] md:min-h-16 max-h-36 py-[20px] pl-[58px] md:pl-16 pr-[62px] md:pr-[112px] bg-[#0d1422] border border-slate-400/15 rounded-[15px] text-white text-sm leading-6 placeholder-[#94a3b8] resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400/40 transition-[background-color,border-color,color] duration-150 ${
               isDisabled ? "opacity-50 cursor-not-allowed" : "hover:border-slate-600"
             }`}
             style={{
-              minHeight: "48px",
               maxHeight: "120px",
             }}
             onInput={(e) => {
@@ -663,12 +662,12 @@ export default function MessageInput({
             accept='image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.rtf,.zip'
           />
 
-          <div className='absolute right-2 bottom-3.5 flex items-center gap-1'>
+          <div className='absolute left-2 md:left-2.5 top-1/2 -translate-y-1/2 flex items-center'>
             <button
               type='button'
               onClick={handlePlusClick}
               disabled={isDisabled}
-              className={`p-2 text-slate-400 transition-all duration-150 rounded-lg ${
+              className={`w-10 h-10 md:w-11 md:h-11 p-2 text-slate-400 transition-[background-color,color,transform] duration-150 rounded-[10px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
                 isDisabled
                   ? "cursor-not-allowed opacity-50"
                   : "hover:text-[#3b82f6] hover:bg-slate-700/50 hover:scale-110 active:scale-95"
@@ -676,11 +675,13 @@ export default function MessageInput({
               title='Upload file'>
               <Plus size={20} />
             </button>
+          </div>
+          <div className='absolute right-[60px] top-1/2 -translate-y-1/2 hidden md:flex items-center'>
             <button
               type='button'
               onClick={() => setShowEmojis(!showEmojis)}
               disabled={isDisabled}
-              className={`p-2 text-slate-400 transition-all duration-150 rounded-lg ${
+              className={`flex w-[38px] h-[38px] p-2 text-slate-400 transition-[background-color,color,transform] duration-150 rounded-[10px] items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
                 isDisabled
                   ? "cursor-not-allowed opacity-50"
                   : showEmojis
@@ -697,7 +698,7 @@ export default function MessageInput({
         <button
           type='submit'
           disabled={(!message.trim() && !hasUploadedFiles) || hasUploadingFiles || isDisabled}
-          className='p-3 bg-gradient-to-br from-[#3b82f6] to-[#2563eb] hover:from-[#2563eb] hover:to-[#1d4ed8] disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed rounded-xl transition-all duration-200 shadow-lg hover:shadow-blue-500/20 disabled:shadow-none hover:scale-105 active:scale-95'
+          className='absolute right-2 top-1/2 -translate-y-1/2 w-11 h-11 p-3 bg-[#2563eb] hover:bg-[#1d4ed8] disabled:bg-slate-700 disabled:cursor-not-allowed rounded-xl transition-[background-color,transform] duration-150 flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300'
           title={
             !isConnected
               ? "Connecting..."

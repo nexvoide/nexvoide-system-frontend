@@ -1,5 +1,5 @@
 import React from "react";
-import { Users, Hash, Edit2 } from "lucide-react";
+import { Users, Hash, Edit2, Menu, MoreVertical } from "lucide-react";
 import { RealtimeChat } from "./realtime-chat.jsx";
 
 export default function ChatWindow({
@@ -8,6 +8,7 @@ export default function ChatWindow({
   selectedChannelId,
   onManageUsers,
   onEditChannel,
+  onOpenSidebar,
 }) {
   if (!channel) {
     return (
@@ -18,17 +19,20 @@ export default function ChatWindow({
   }
 
   return (
-    <div className='flex-1 min-w-0 flex flex-col bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.10),transparent_34%),linear-gradient(180deg,#07091d_0%,#010333_100%)]'>
+    <div className='flex-1 min-w-0 min-h-0 h-full overflow-hidden flex flex-col bg-[#060912]'>
       {/* Channel Header */}
-      <div className='h-16 md:h-[72px] px-4 md:px-6 border-b border-white/[0.06] flex items-center justify-between bg-[#080a1c]/85 backdrop-blur-xl shadow-[0_10px_30px_rgba(0,0,0,0.16)] flex-shrink-0'>
+      <div className='h-[68px] md:h-20 px-3 md:px-6 border-b border-slate-400/10 flex items-center justify-between bg-[#080d18] flex-shrink-0'>
         <div className='flex items-center gap-2 md:gap-3 min-w-0 flex-1'>
-          <div className='w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-400/15 flex items-center justify-center flex-shrink-0'>
+          <button onClick={onOpenSidebar} className='md:hidden w-10 h-10 rounded-[10px] border border-[#1b283d] bg-[#0c1423] flex items-center justify-center flex-shrink-0' aria-label='Open conversations'>
+            <Menu size={19} className='text-[#b8c7de]' />
+          </button>
+          <div className='w-10 h-10 md:w-[42px] md:h-[42px] rounded-xl bg-[#0e2952] border border-[#1f59a8]/60 flex items-center justify-center flex-shrink-0'>
             <Hash size={17} className='text-blue-400' />
           </div>
           <div className='min-w-0 flex-1'>
-            <h3 className='font-semibold tracking-tight text-white text-sm md:text-base truncate'>{channel.name}</h3>
+            <h3 className='font-semibold tracking-tight text-[#f8fafc] text-[15px] md:text-lg truncate'>{channel.name}</h3>
             {channel.description && (
-              <p className='text-xs text-slate-400 truncate hidden md:block'>{channel.description}</p>
+              <p className='text-[11px] md:text-xs text-[#8ea0b8] truncate'>{channel.description}</p>
             )}
           </div>
         </div>
@@ -36,20 +40,23 @@ export default function ChatWindow({
           <div className='flex items-center gap-1 md:gap-2 flex-shrink-0'>
             <button
               onClick={onManageUsers}
-              className='p-2 md:px-3 md:py-2 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] rounded-xl flex items-center gap-2 text-sm text-slate-300 hover:text-white transition-all touch-manipulation'
+              className='h-10 md:h-[42px] px-3 bg-white/[0.035] hover:bg-white/[0.07] border border-slate-400/10 rounded-xl flex items-center gap-2 text-sm text-slate-300 hover:text-white transition-colors duration-150 touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400'
               title='Manage Channel Users'>
               <Users size={16} />
               <span className='hidden md:inline'>Users</span>
             </button>
             <button
               onClick={onEditChannel}
-              className='p-2 md:px-3 md:py-2 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] rounded-xl flex items-center gap-2 text-sm text-slate-300 hover:text-white transition-all touch-manipulation'
+              className='h-10 md:h-[42px] px-3 bg-white/[0.035] hover:bg-white/[0.07] border border-slate-400/10 rounded-xl flex items-center gap-2 text-sm text-slate-300 hover:text-white transition-colors duration-150 touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400'
               title='Edit Channel'>
               <Edit2 size={16} />
               <span className='hidden md:inline'>Edit</span>
             </button>
           </div>
         )}
+        <button className='md:hidden w-10 h-10 rounded-[10px] flex items-center justify-center text-[#8ea0b8]' aria-label='Conversation actions'>
+          <MoreVertical size={20} />
+        </button>
       </div>
 
       <RealtimeChat

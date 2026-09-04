@@ -24,6 +24,7 @@ export const ChatMessageItem = ({
   const deliveryStatus = message.deliveryStatus || 'sent';
   const isMentioned = message.mentions && message.mentions.includes(user?.id || user?.username);
   const isRead = deliveryStatus === 'read' || (message.readBy && message.readBy.length > 0);
+  const hasAttachments = Array.isArray(message.attachments) && message.attachments.length > 0;
 
   // Get user role and ID for display
   const getUserDisplayInfo = () => {
@@ -84,7 +85,7 @@ export const ChatMessageItem = ({
 
   return (
     <motion.div
-      className={`flex group ${showHeader ? 'mt-5' : 'mt-1'} ${isOwnMessage ? "justify-end" : "justify-start"} px-1 sm:px-2`}
+      className={`flex group ${showHeader ? 'mt-4' : 'mt-1'} ${isOwnMessage ? "justify-end" : "justify-start"} px-0`}
       initial={{ opacity: 0, y: 8 }}
       animate={isMentioned ? { 
         opacity: 1, 
@@ -114,7 +115,7 @@ export const ChatMessageItem = ({
         </div>
       )}
       
-      <div className={cn("flex-1 max-w-[86%] sm:max-w-[72%] flex flex-col", {
+      <div className={cn("min-w-0 max-w-[calc(100%-48px)] sm:max-w-[72%] md:max-w-[68%] flex flex-col", {
           "items-end": isOwnMessage,
         })}>
         {/* Header with name, role, and timestamp */}
@@ -161,12 +162,15 @@ export const ChatMessageItem = ({
         <div className="relative">
         <div
           className={cn(
-              "py-2.5 px-3.5 rounded-2xl text-sm w-fit break-words relative group/message shadow-lg transition-all duration-200 border",
+              "py-3 px-4 rounded-[14px] text-sm w-fit max-w-full break-words relative group/message transition-all duration-150 border overflow-hidden",
+            hasAttachments && "max-w-[560px]",
             isOwnMessage
-              ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white border-blue-400/20 rounded-br-md shadow-blue-950/20"
+              ? hasAttachments
+                ? "bg-transparent text-white border-transparent rounded-none p-0"
+                : "bg-[#12366a] text-white border-[#1f59a8]/80 rounded-br-[4px]"
                 : isMentioned
                 ? "bg-slate-800/90 text-white border-yellow-500/35 rounded-bl-md"
-                : "bg-slate-800/75 text-white border-white/[0.06] rounded-bl-md"
+                : "bg-[#0d1726] text-white border-[#1b283d]/80 rounded-bl-[4px]"
             )}>
             {/* Message content */}
             {message.content && (
@@ -195,13 +199,13 @@ export const ChatMessageItem = ({
                   const isVideo = attachment.type && attachment.type.startsWith('video/');
                   
                   return (
-                    <div key={idx} className="rounded-lg overflow-hidden border border-slate-700/50">
+                    <div key={idx} className="max-w-[560px] rounded-xl overflow-hidden border border-slate-400/15 bg-[#0d1422]">
                       {isImage ? (
                         <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="block">
                           <img
                             src={attachment.url}
                             alt={attachment.name}
-                            className="max-w-full max-h-96 object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                            className="block w-full h-auto max-h-96 object-contain cursor-pointer hover:opacity-90 transition-opacity bg-[#060912]"
                           />
                         </a>
                       ) : isVideo ? (

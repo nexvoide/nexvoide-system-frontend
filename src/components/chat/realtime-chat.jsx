@@ -174,7 +174,11 @@ export const RealtimeChat = ({
   }, []);
 
   return (
-    <div className='relative flex flex-col flex-1 min-h-0 w-full antialiased'>
+    <div className='relative flex flex-col flex-1 min-h-0 h-0 w-full overflow-hidden antialiased'>
+      <div className='hidden md:flex h-10 flex-none items-center justify-between px-6 border-b border-slate-400/10 bg-[#080d18] text-xs text-[#64748b]'>
+        <span className='flex items-center gap-2'><i className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-[#22c55e]' : 'bg-amber-400'}`} />{isConnected ? 'Live' : 'Reconnecting'} • {allUsers.length} members</span>
+        <span>Files expire after 7 days • Max 10 MB • No videos</span>
+      </div>
       {/* Connection Status Indicator */}
       {!isConnected && (
         <motion.div 
@@ -190,7 +194,7 @@ export const RealtimeChat = ({
       {/* Messages */}
       <div
         ref={containerRef}
-        className='flex-1 min-h-0 w-full overflow-y-auto px-2 sm:px-4 md:px-6 py-6 scrollbar-thin'>
+        className='chat-messages flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-3 sm:px-5 md:px-6 py-5 scrollbar-thin'>
         {isLoading && messages.length === 0 ? (
           <div className='text-center text-sm text-slate-400 py-12'>
             <div className="inline-flex items-center gap-2">
@@ -212,7 +216,7 @@ export const RealtimeChat = ({
             )}
           </div>
         ) : (
-          <div className='max-w-5xl mx-auto space-y-1'>
+          <div className='w-full mx-auto space-y-1'>
             {messages.map((message, index) => {
               const prevMessage = index > 0 ? messages[index - 1] : null;
               const showHeader =
@@ -263,8 +267,8 @@ export const RealtimeChat = ({
         )}
       </div>
 
-      <div className='w-full px-3 sm:px-5 md:px-6 py-3 md:py-4 border-t border-white/[0.06] bg-[#07091a]/90 backdrop-blur-xl'>
-      <div className='max-w-5xl mx-auto'>
+      <div className='chat-composer flex-none w-full px-3 sm:px-5 pt-3 pb-[max(16px,env(safe-area-inset-bottom))] bg-transparent'>
+      <div className='w-full mx-auto'>
       <MessageInput
         channelId={roomName}
         userId={user?.id}

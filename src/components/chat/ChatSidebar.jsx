@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Hash, Plus, ChevronDown, ChevronRight, Video, Palette, Users, FolderPlus, GripVertical, Trash2 } from 'lucide-react';
+import { Hash, Plus, ChevronDown, ChevronRight, Video, Palette, Users, FolderPlus, GripVertical, Trash2, Search, X } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore.js';
 import { useUnreadMessages } from '../../hooks/useUnreadMessages.js';
 
@@ -25,6 +25,7 @@ export default function ChatSidebar({
   onDeleteSection,
   allUsers = [],
   employees = [],
+  onClose,
 }) {
   const { user } = useAppStore();
   const { unreadCounts, mentionCounts, hasUnread, hasMentions } = useUnreadMessages(channels, selectedChannel);
@@ -161,19 +162,27 @@ export default function ChatSidebar({
   };
 
   return (
-    <div className="w-[280px] h-full bg-gradient-to-b from-[#0b0d20] to-[#070817] border-r border-white/[0.06] flex flex-col shadow-[12px_0_40px_rgba(0,0,0,0.14)]">
+    <div className="w-[330px] md:w-[300px] lg:w-[320px] max-w-[84vw] h-full bg-[#080d18] border-r border-slate-400/10 flex flex-col">
       {/* Header */}
-      <div className="h-16 md:h-[72px] px-5 border-b border-white/[0.06] flex items-center">
+      <div className="h-20 px-6 flex items-center justify-between">
         <h2 className="text-base font-semibold tracking-tight text-white flex items-center gap-3">
-          <span className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-400/15 flex items-center justify-center">
+          <span className="hidden md:flex w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-400/15 items-center justify-center">
             <Hash size={18} className="text-blue-400" />
           </span>
           Conversations
         </h2>
+        <button onClick={onClose} className="md:hidden w-10 h-10 rounded-[10px] bg-[#0c1423] border border-[#1b283d] flex items-center justify-center" aria-label="Close conversations"><X size={18} /></button>
+      </div>
+
+      <div className="px-4 pb-3">
+        <div className="h-11 rounded-xl bg-[#0d1422] border border-slate-400/10 flex items-center gap-3 px-3 text-xs text-[#94a3b8]">
+          <Search size={15} />
+          <span>Search channels</span>
+        </div>
       </div>
 
       {/* Channels List */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin py-3 px-2">
+      <div className="flex-1 overflow-y-auto scrollbar-thin py-1 px-4">
         {sections.map((section) => {
           const sectionName = typeof section === 'string' ? section : section.name;
           const sectionEmoji = typeof section === 'object' ? section.emoji : null;
@@ -213,7 +222,7 @@ export default function ChatSidebar({
                 <div className="flex items-center">
                   <button
                     onClick={() => toggleSection(sectionName)}
-                    className={`flex-1 px-3 py-2.5 flex items-center gap-2 text-slate-400 hover:text-white hover:bg-white/[0.035] rounded-xl transition-colors ${
+                    className={`flex-1 min-h-10 px-2 py-2 flex items-center gap-2 text-[#8ea0b8] hover:text-white rounded-lg transition-colors uppercase tracking-[.08em] text-[11px] ${
                       isAdmin ? 'pl-6' : ''
                     }`}
                   >
@@ -292,10 +301,10 @@ export default function ChatSidebar({
                                 onSelectChannel(channel.id);
                               }
                             }}
-                            className={`w-full px-3 py-2.5 flex items-center gap-2.5 text-sm transition-all group relative rounded-xl ${
+                            className={`w-full min-h-10 px-3 py-2 flex items-center gap-2.5 text-sm transition-colors duration-150 group relative rounded-[10px] ${
                               selectedChannel === channel.id
-                                ? 'bg-gradient-to-r from-blue-500/20 to-blue-500/[0.07] text-blue-300 ring-1 ring-blue-400/15 shadow-sm'
-                                : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.035]'
+                                ? 'bg-[#0e2952] text-[#eaf2ff] ring-1 ring-[#1f59a8]/80'
+                                : 'text-[#b8c7de] hover:text-white hover:bg-white/[0.035]'
                             } ${isAdmin ? 'pl-8' : ''}`}
                           >
                             <Hash size={14} className={selectedChannel === channel.id ? 'text-[#3b82f6]' : ''} />
@@ -366,7 +375,7 @@ export default function ChatSidebar({
 
       {/* Admin Actions (Admin Only) */}
       {isAdmin && (
-        <div className="p-3 border-t border-white/[0.06] space-y-2 bg-black/10">
+        <div className="p-4 border-t border-slate-400/10 space-y-3 bg-transparent">
           <button
             onClick={onCreateSection}
             className="w-full px-4 py-2.5 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-slate-300 rounded-xl flex items-center gap-2 transition-colors font-medium text-sm"
