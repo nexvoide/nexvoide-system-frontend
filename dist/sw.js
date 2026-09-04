@@ -1,6 +1,6 @@
 // Service Worker for Nexvoide Management PWA
-const CACHE_NAME = 'nexvoide-v4';
-const RUNTIME_CACHE = 'nexvoide-runtime-v4';
+const CACHE_NAME = 'nexvoide-v5';
+const RUNTIME_CACHE = 'nexvoide-runtime-v5';
 
 // Assets to cache on install
 const PRECACHE_ASSETS = [

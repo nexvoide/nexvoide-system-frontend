@@ -184,14 +184,20 @@ export default function Dashboard() {
   // Get mobile-adjusted layout
   const getMobileLayout = (layout) => {
     if (!isMobile) return layout;
-    // On mobile with 4 columns, stack all widgets vertically (full width)
+    const mobileHeights = {
+      myearnings: 2,
+      clientstats: 2,
+      netprofit: 2,
+      onlineteam: 3,
+      activeprojects: 4,
+      activitylogs: 4,
+    };
     let currentY = 0;
-    return layout.map((item, index) => {
-      // All widgets take full width (4 columns) on mobile
+    return layout.map((item) => {
       const newW = 4;
-      const newH = Math.max(item.h || 2, 2); // Keep height but ensure minimum
+      const newH = mobileHeights[item.i] || 3;
       const newY = currentY;
-      currentY += newH + 1; // Add spacing between widgets
+      currentY += newH;
       
       return {
         ...item,
@@ -638,9 +644,9 @@ export default function Dashboard() {
       setIsMobile(mobile);
       
       if (container) {
-        setWidth(mobile ? window.innerWidth - 40 : container.offsetWidth || window.innerWidth - 100);
+        setWidth(container.clientWidth || (mobile ? window.innerWidth - 16 : window.innerWidth - 100));
       } else {
-        setWidth(mobile ? window.innerWidth - 40 : window.innerWidth - 100);
+        setWidth(mobile ? window.innerWidth - 16 : window.innerWidth - 100);
       }
       
       // Use fewer columns on mobile for better stacking
@@ -1407,7 +1413,7 @@ export default function Dashboard() {
           layout={isMobile ? getMobileLayout(layout) : layout}
           onLayoutChange={handleLayoutChange}
           cols={cols}
-          rowHeight={isMobile ? 80 : 60}
+          rowHeight={isMobile ? 64 : 60}
           width={width}
           isDraggable={!isMobile}
           isResizable={!isMobile}

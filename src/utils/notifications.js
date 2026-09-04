@@ -54,8 +54,8 @@ export async function showBrowserNotification(title, options = {}) {
 
   const { onClick, priority, ...notificationOptions } = options;
   const defaultOptions = {
-    icon: '/logo.png',
-    badge: '/logo.png',
+    icon: '/icon-192.png',
+    badge: '/icon-144.png',
     tag: options.tag || 'nexvoide-notification',
     requireInteraction: priority === NOTIFICATION_PRIORITY.URGENT,
     ...notificationOptions,
@@ -167,5 +167,4 @@ export function formatNotificationMessage(type, data) {
       return data.message || 'New notification';
   }
 }
-
 

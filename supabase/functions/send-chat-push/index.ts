@@ -89,8 +89,8 @@ Deno.serve(async request => {
   const channelName = channel?.name || 'Chat';
   const content = message.content?.trim() || (message.attachments?.length ? 'Sent an attachment' : 'New message');
   const notificationPayload = JSON.stringify({
-    title: `${senderName} in ${channelName}`,
-    body: content.length > 140 ? `${content.slice(0, 137)}…` : content,
+    title: senderName,
+    body: `${channelName} · ${content.length > 96 ? `${content.slice(0, 93)}…` : content}`,
     tag: `chat-message-${message.id}`,
     timestamp: message.created_at ? Date.parse(message.created_at) : Date.now(),
     data: {

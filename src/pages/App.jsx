@@ -107,8 +107,8 @@ function Shell() {
           useNotificationStore.getState().addNotification({
             id: `chat-message-${message.id}`,
             type: NOTIFICATION_TYPES.CHAT_MESSAGE,
-            title: `${senderName} in ${channelName}`,
-            message: messagePreview.length > 120 ? `${messagePreview.slice(0, 117)}…` : messagePreview,
+            title: senderName,
+            message: `${channelName} · ${messagePreview.length > 96 ? `${messagePreview.slice(0, 93)}…` : messagePreview}`,
             priority: NOTIFICATION_PRIORITY.HIGH,
             userId: user.id,
             data: {
@@ -314,7 +314,7 @@ function Shell() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col px-2 sm:px-3 md:px-4 py-2 sm:py-3 min-h-screen overflow-x-hidden">
-        <div className="flex items-center md:hidden mb-3 sm:mb-4">
+        <div className="flex items-center md:hidden mb-1">
           {/* Mobile Menu Button */}
           <button
             onClick={() => setMobileMenuOpen(true)}
