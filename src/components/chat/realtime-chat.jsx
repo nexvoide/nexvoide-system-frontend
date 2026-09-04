@@ -32,6 +32,7 @@ export const RealtimeChat = ({
   const [editingMessage, setEditingMessage] = useState(null);
   const previousMessagesLengthRef = useRef(0);
   const [isTabFocused, setIsTabFocused] = useState(true);
+  const [sendError, setSendError] = useState('');
   const messageMapRef = useRef({}); // Cache for reply-to messages
 
   // Track tab focus for notifications
@@ -45,6 +46,20 @@ export const RealtimeChat = ({
     return () => {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
+
+  useEffect(() => {
+    let dismissTimer;
+    const handleSendError = (event) => {
+      setSendError(event.detail?.message || 'Message could not be sent.');
+      window.clearTimeout(dismissTimer);
+      dismissTimer = window.setTimeout(() => setSendError(''), 3500);
+    };
+    window.addEventListener('chat-send-error', handleSendError);
+    return () => {
+      window.clearTimeout(dismissTimer);
+      window.removeEventListener('chat-send-error', handleSendError);
     };
   }, []);
 
@@ -208,7 +223,6 @@ export const RealtimeChat = ({
             </div>
           )}
         </div>
-        <span>Files expire after 7 days • Max 10 MB • No videos</span>
       </div>
       {/* Connection Status Indicator */}
       {!isConnected && (
@@ -219,6 +233,16 @@ export const RealtimeChat = ({
         >
           <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
           {isLoading ? 'Loading messages...' : 'Connecting to chat...'}
+        </motion.div>
+      )}
+      {sendError && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          className='absolute top-3 left-1/2 -translate-x-1/2 z-20 max-w-[calc(100%-24px)] rounded-lg border border-red-400/20 bg-red-950/95 px-3 py-2 text-center text-xs text-red-200 shadow-lg'
+        >
+          {sendError}
         </motion.div>
       )}
       

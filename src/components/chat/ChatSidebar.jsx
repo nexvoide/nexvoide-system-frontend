@@ -303,7 +303,7 @@ export default function ChatSidebar({
                             }}
                             className={`w-full min-h-10 px-3 py-2 flex items-center gap-2.5 text-sm transition-colors duration-150 group relative rounded-[10px] ${
                               selectedChannel === channel.id
-                                ? 'bg-[#0e2952] text-[#eaf2ff] ring-1 ring-[#1f59a8]/80'
+                                ? 'bg-[#12325f] text-[#eaf2ff]'
                                 : 'text-[#b8c7de] hover:text-white hover:bg-white/[0.035]'
                             } ${isAdmin ? 'pl-8' : ''}`}
                           >

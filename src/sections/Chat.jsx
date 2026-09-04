@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { Hash, MessageSquare, X, Menu } from 'lucide-react';
+import { MessageSquare, Loader2 } from 'lucide-react';
 import { useChatStore } from '../stores/chatStore.js';
 import { useAppStore } from '../stores/appStore.js';
 import { ROLES } from '../utils/permissions.js';
@@ -92,13 +92,27 @@ export default function Chat({ onBack }) {
     return () => window.removeEventListener('popstate', handleBrowserBack);
   }, [onBack]);
 
-  const handleBack = () => {
-    if (window.matchMedia('(max-width: 767px)').matches && window.history.state?.nexvoideChat) {
-      window.history.back();
-      return;
-    }
-    onBack?.();
-  };
+  if (isLoading) {
+    return (
+      <div className="chat-shell flex h-[calc(100dvh-92px)] md:h-[calc(100vh-104px)] min-h-0 overflow-hidden rounded-none md:rounded-[20px] border border-[#1b283d]/80 bg-[#090e1a] text-white">
+        <div className="hidden md:flex w-[300px] lg:w-[320px] flex-col border-r border-slate-400/10 bg-[#080d18] p-6">
+          <div className="h-6 w-36 rounded bg-slate-700/30 animate-pulse" />
+          <div className="mt-8 h-11 w-full rounded-xl bg-slate-700/20 animate-pulse" />
+          <div className="mt-8 space-y-3">
+            <div className="h-4 w-24 rounded bg-slate-700/20 animate-pulse" />
+            <div className="h-10 w-full rounded-lg bg-slate-700/15 animate-pulse" />
+            <div className="h-10 w-4/5 rounded-lg bg-slate-700/15 animate-pulse" />
+          </div>
+        </div>
+        <div className="flex min-w-0 flex-1 items-center justify-center bg-[#060912]">
+          <div className="flex items-center gap-3 text-sm text-slate-400">
+            <Loader2 size={18} className="animate-spin text-blue-400" />
+            Loading conversations…
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="chat-shell flex flex-col md:flex-row h-[calc(100dvh-92px)] md:h-[calc(100vh-104px)] min-h-0 bg-[#090e1a] text-white rounded-none md:rounded-[20px] overflow-hidden relative border border-[#1b283d]/80">
@@ -162,7 +176,6 @@ export default function Chat({ onBack }) {
               setShowCreateChannel(true);
             }}
             onOpenSidebar={() => setShowSidebar(true)}
-            onBack={handleBack}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center">

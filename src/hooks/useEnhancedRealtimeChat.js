@@ -570,7 +570,13 @@ export function useEnhancedRealtimeChat({
             hint: error.hint,
             code: error.code,
           });
-          alert(`Failed to send message: ${error.message || 'Unknown error'}`);
+          window.dispatchEvent(new CustomEvent('chat-send-error', {
+            detail: {
+              message: error.message === 'permission denied for table messages'
+                ? 'Your chat permission could not be verified. Please sign in again.'
+                : `Message could not be sent: ${error.message || 'Unknown error'}`,
+            },
+          }));
           return;
         }
 

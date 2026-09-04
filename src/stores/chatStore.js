@@ -177,7 +177,7 @@ const requireData = (data, error, operation) => {
 const initialState = { 
   channels: [], 
   messages: {},
-  sections: getDefaultSections(),
+  sections: [],
   isLoading: true,
 };
 

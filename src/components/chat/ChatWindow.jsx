@@ -1,5 +1,5 @@
 import React from "react";
-import { Users, Edit2, Menu, MoreVertical, ArrowLeft } from "lucide-react";
+import { Users, Edit2, Menu, MoreVertical } from "lucide-react";
 import { RealtimeChat } from "./realtime-chat.jsx";
 
 export default function ChatWindow({
@@ -9,7 +9,6 @@ export default function ChatWindow({
   onManageUsers,
   onEditChannel,
   onOpenSidebar,
-  onBack,
 }) {
   if (!channel) {
     return (
@@ -24,9 +23,6 @@ export default function ChatWindow({
       {/* Channel Header */}
       <div className='h-[68px] md:h-20 px-3 md:px-6 border-b border-slate-400/10 flex items-center justify-between bg-[#080d18] flex-shrink-0'>
         <div className='flex items-center gap-2 md:gap-3 min-w-0 flex-1'>
-          <button onClick={onBack} className='md:hidden w-10 h-10 rounded-[10px] flex items-center justify-center flex-shrink-0 text-[#b8c7de] hover:bg-[#0c1423] active:scale-95 transition-[background-color,transform]' aria-label='Back to dashboard'>
-            <ArrowLeft size={21} />
-          </button>
           <button onClick={onOpenSidebar} className='md:hidden w-10 h-10 rounded-[10px] border border-[#1b283d] bg-[#0c1423] flex items-center justify-center flex-shrink-0' aria-label='Open conversations'>
             <Menu size={19} className='text-[#b8c7de]' />
           </button>

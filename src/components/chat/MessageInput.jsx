@@ -427,6 +427,7 @@ export default function MessageInput({
       {/* Uploaded Files Preview */}
       {uploadedFiles.length > 0 && (
         <div className='mb-2 space-y-2'>
+          <p className='px-1 text-xs text-[#64748b]'>Files expire after 7 days • Max 10 MB • No videos</p>
           {uploadedFiles.map((file, idx) => (
             <motion.div
               key={`${file.name}-${idx}`}
@@ -637,7 +638,7 @@ export default function MessageInput({
             }
             rows={1}
             disabled={isDisabled}
-            className={`block w-full min-h-[62px] md:min-h-16 max-h-36 py-[20px] pl-[58px] md:pl-16 pr-[62px] md:pr-[112px] bg-[#0d1422] border border-slate-400/15 rounded-[15px] text-white text-sm leading-6 placeholder-[#94a3b8] resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400/40 transition-[background-color,border-color,color] duration-150 ${
+            className={`block w-full min-h-[62px] md:min-h-16 max-h-36 overflow-y-hidden py-[20px] pl-[58px] md:pl-16 pr-[62px] md:pr-[112px] bg-[#0d1422] border border-slate-400/15 rounded-[15px] text-white text-sm leading-6 placeholder-[#94a3b8] resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400/40 transition-[background-color,border-color,color] duration-150 ${
               isDisabled ? "opacity-50 cursor-not-allowed" : "hover:border-slate-600"
             }`}
             style={{
@@ -646,10 +647,9 @@ export default function MessageInput({
             onInput={(e) => {
               if (!isDisabled) {
                 e.target.style.height = "auto";
-                e.target.style.height = `${Math.min(
-                  e.target.scrollHeight,
-                  120
-                )}px`;
+                const nextHeight = Math.min(e.target.scrollHeight, 120);
+                e.target.style.height = `${nextHeight}px`;
+                e.target.style.overflowY = e.target.scrollHeight > 120 ? "auto" : "hidden";
               }
             }}
           />
