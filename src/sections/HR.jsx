@@ -116,7 +116,9 @@ export default function HR() {
       
       // Get project's date month (prefer startDate for pulled-forward projects)
       // When a project is pulled forward, its start_date is updated to the next month
-      const projectDate = isPulledForward ? (p.startDate || p.start_date) : (p.endDate || p.end_date || p.startDate || p.start_date);
+      const projectDate = isPulledForward
+        ? (p.startDate || p.start_date)
+        : (p.completedAt || p.completed_at || p.updatedAt || p.updated_at);
       const m = projectDate ? ym(projectDate) : month;
       
       // Include project if:
@@ -130,22 +132,25 @@ export default function HR() {
       const projectQuantity = Number(p.quantity) || 0;
       const revisionQty = Number(p.revisionQuantity) || 0;
       const isRevision = p.isRevision || p.status === "Revision";
+      const isCompleted = String(p.status || "").trim().toLowerCase() === "completed";
       // For revisions, use revisionQuantity if available, otherwise use quantity
       const quantityToUse =
         isRevision && revisionQty > 0 ? revisionQty : projectQuantity;
       for (const a of assignedArray) {
-        // Compute payout both in display currency and in PKR (PKR is authoritative for employee payouts)
-        const orderDisplay = convert(p.amount || 0, p.currency, currency, rate);
-        const orderPKR = convert(p.amount || 0, p.currency, "PKR", rate);
+        // A team payout is earned only after the project is completed.
         let costDisplay = 0;
         let costPKR = 0;
-        if (a.costType === "percentage") {
-          const pct = (Number(a.costValue) || 0) / 100;
-          costDisplay = orderDisplay * pct;
-          costPKR = orderPKR * pct;
-        } else {
-          costDisplay = convert(a.costValue || 0, "PKR", currency, rate);
-          costPKR = Number(a.costValue) || 0;
+        if (isCompleted) {
+          const orderDisplay = convert(p.amount || 0, p.currency, currency, rate);
+          const orderPKR = convert(p.amount || 0, p.currency, "PKR", rate);
+          if (a.costType === "percentage") {
+            const pct = (Number(a.costValue) || 0) / 100;
+            costDisplay = orderDisplay * pct;
+            costPKR = orderPKR * pct;
+          } else {
+            costDisplay = convert(a.costValue || 0, "PKR", currency, rate);
+            costPKR = Number(a.costValue) || 0;
+          }
         }
         const prev = map.get(a.name) || {
           projects: 0,

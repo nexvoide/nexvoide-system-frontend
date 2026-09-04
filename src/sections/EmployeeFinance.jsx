@@ -21,9 +21,9 @@ export default function EmployeeFinance() {
       // Skip archived projects (they're in archived_projects table, not active projects)
       if (p.archived === true) continue;
       
-      const projectMonth = ym(p.endDate || p.startDate);
-      if (!projectMonth || projectMonth !== month) continue;
       if (p.status !== "Completed") continue;
+      const projectMonth = ym(p.completedAt || p.completed_at || p.updatedAt || p.updated_at);
+      if (!projectMonth || projectMonth !== month) continue;
 
       const nums = computeProjectNumbers(p);
       totalEarned += nums.valueInDisplay;
@@ -106,5 +106,4 @@ export default function EmployeeFinance() {
     </div>
   );
 }
-
 

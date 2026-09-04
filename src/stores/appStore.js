@@ -212,7 +212,14 @@ export const useAppStore = create((set, get) => ({
 
   async addProject(p) {
     try {
-      const data = toSnake({ ...p });
+      const now = new Date().toISOString();
+      const data = toSnake({
+        ...p,
+        paidAt: p.paidAt || now,
+        completedAt: String(p.status || '').trim().toLowerCase() === 'completed'
+          ? (p.completedAt || now)
+          : null,
+      });
       const created = await db.dbProjects.create(data);
       const camel = toCamel(created);
       set({ projects: [camel, ...get().projects] });
@@ -238,7 +245,15 @@ export const useAppStore = create((set, get) => ({
       // Ensure ID is a string for consistent comparison
       const projectId = String(id);
       const oldProject = get().projects.find((p) => String(p.id) === projectId);
-      const data = toSnake(updates);
+      const wasCompleted = String(oldProject?.status || '').trim().toLowerCase() === 'completed';
+      const willBeCompleted = String(updates.status ?? oldProject?.status ?? '').trim().toLowerCase() === 'completed';
+      const accountingUpdates = { ...updates };
+      if (updates.status !== undefined && willBeCompleted && !wasCompleted) {
+        accountingUpdates.completedAt = new Date().toISOString();
+      } else if (updates.status !== undefined && !willBeCompleted && wasCompleted) {
+        accountingUpdates.completedAt = null;
+      }
+      const data = toSnake(accountingUpdates);
       const updated = await db.dbProjects.update(projectId, data);
       const camel = toCamel(updated);
       set({

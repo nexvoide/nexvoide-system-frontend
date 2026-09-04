@@ -159,6 +159,8 @@ export const dbProjects = {
         start_date: project.start_date || null,
         end_date: project.end_date || null,
         deadline: project.deadline || null,
+        paid_at: project.paid_at || project.created_at || new Date().toISOString(),
+        completed_at: project.completed_at || null,
         assigned: assignedValue,
         raw_source_link: project.raw_source_link || project.rawSourceLink || null,
         attachments: attachmentsValue,
@@ -257,6 +259,8 @@ export const dbProjects = {
       if (updates.start_date !== undefined) projectData.start_date = updates.start_date;
       if (updates.end_date !== undefined) projectData.end_date = updates.end_date;
       if (updates.deadline !== undefined) projectData.deadline = updates.deadline;
+      if (updates.paid_at !== undefined) projectData.paid_at = updates.paid_at;
+      if (updates.completed_at !== undefined) projectData.completed_at = updates.completed_at;
       if (updates.notes !== undefined) projectData.notes = updates.notes || null;
       
       // Handle assigned field - it might be a string (from DB) or an array (from form)

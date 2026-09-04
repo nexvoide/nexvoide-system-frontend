@@ -116,22 +116,19 @@ export default function Finance() {
         // Skip archived projects (they're in archived_projects table, not active projects)
         if (p.archived === true) continue;
         
-        const projectDate = p.endDate || p.startDate || p.deadline;
-        if (projectDate) {
-          const projMonth = projectDate.substring(0, 7); // YYYY-MM
-          if (projMonth === monthKey) {
-            const order = convert(p.amount || 0, p.currency, currency, rate);
-            const assignedArray = ensureAssigned(p.assigned);
-            let emp = 0;
-            for (const a of assignedArray) {
-              if (a.costType === 'percentage') emp += order * (Number(a.costValue) || 0) / 100;
-              else emp += convert(a.costValue || 0, 'PKR', currency, rate);
-            }
-            revenue += order;
-            expenses += emp;
-            profit += order - emp;
+        const order = convert(p.amount || 0, p.currency, currency, rate);
+        const paidMonth = String(p.paidAt || p.paid_at || p.createdAt || p.created_at || p.startDate || p.start_date || '').slice(0, 7);
+        if (paidMonth === monthKey) revenue += order;
+
+        const completedMonth = String(p.completedAt || p.completed_at || p.updatedAt || p.updated_at || '').slice(0, 7);
+        if (String(p.status || '').trim().toLowerCase() === 'completed' && completedMonth === monthKey) {
+          const assignedArray = ensureAssigned(p.assigned);
+          for (const a of assignedArray) {
+            if (a.costType === 'percentage') expenses += order * (Number(a.costValue) || 0) / 100;
+            else expenses += convert(a.costValue || 0, 'PKR', currency, rate);
           }
         }
+        profit = revenue - expenses;
       }
       months.push({ name: monthName, revenue, expenses, profit });
     }
@@ -419,4 +416,3 @@ export default function Finance() {
     </div>
   );
 }
-

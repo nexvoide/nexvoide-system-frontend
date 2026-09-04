@@ -7,6 +7,8 @@ import { notifyAssignedEmployees } from "../utils/whatsapp.js";
 import { uploadFile, deleteFile } from "../utils/storage.js";
 import { notifyProjectAssignment } from "../utils/notificationHelpers.js";
 
+const today = () => new Date().toLocaleDateString('en-CA');
+
 export default function ProjectForm({ editing, onDone, triggerLabel }) {
   const { addProject, updateProject, profiles, agencies, brands, employees, rate, user, userRole, allUsers } = useAppStore();
   const [form, setForm] = useState({
@@ -19,6 +21,7 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
     service: "",
     quantity: "",
     amount: "",
+    paidAt: today(),
     currency: "USD",
     assigned: [],
     status: "In Progress",
@@ -48,6 +51,7 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
     service: "",
     quantity: "",
     amount: "",
+    paidAt: today(),
     currency: "USD",
     assigned: [],
     status: "In Progress",
@@ -317,6 +321,7 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
         quantity: form.isRevision ? null : quantityValue,
         revisionQuantity: form.isRevision ? quantityValue : null,
         amount: Number(form.amount) || 0,
+        paidAt: form.paidAt ? new Date(`${form.paidAt}T12:00:00`).toISOString() : new Date().toISOString(),
         assigned: (form.assigned || []).filter((a) => a.name).map((a) => ({ ...a, costValue: Number(a.costValue) || 0 })),
         deadline: deadlineValue,
         rawSourceLink: rawSourceLinkValue,
@@ -729,6 +734,10 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
         <div>
+          <label className="text-xs text-slate-500">Client payment date</label>
+          <input className="glass w-full px-3 h-11 rounded-xl" type="date" required value={form.paidAt ? String(form.paidAt).slice(0, 10) : ""} onChange={(e) => set("paidAt", e.target.value)} />
+        </div>
+        <div>
           <label className="text-xs text-slate-500">Start date</label>
           <input className="glass w-full px-3 h-11 rounded-xl" type="date" value={form.startDate || ""} onChange={(e) => set("startDate", e.target.value)} />
         </div>
@@ -750,5 +759,4 @@ export default function ProjectForm({ editing, onDone, triggerLabel }) {
 
   return <form onSubmit={submit}>{renderForm(false)}</form>;
 }
-
 
