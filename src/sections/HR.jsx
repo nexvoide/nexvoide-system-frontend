@@ -24,6 +24,8 @@ import {
   useFilteredProjects,
 } from "../hooks/useRoleFilter.js";
 import { hasPermission, PERMISSIONS } from "../utils/permissions.js";
+import { belongsToBalanceMonth, toYearMonth } from "../utils/projectMonth.js";
+import { isProjectActiveInMonth } from "../utils/subscriptionBilling.js";
 
 export default function HR() {
   const {
@@ -34,8 +36,10 @@ export default function HR() {
     rate,
     loading,
     userRole,
+    activeMonth,
     refreshEmployees,
     employees: allEmployees,
+    timeEntries,
     user,
   } = useAppStore();
   const employees = useFilteredEmployees(); // Use filtered employees based on role
@@ -59,10 +63,6 @@ export default function HR() {
   const [editing, setEditing] = useState(null);
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState("payout");
-  const [month, setMonth] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  });
 
   // Don't refresh on mount - data already loaded in initialize()
   // Only refresh if explicitly needed (e.g., after create/update)
@@ -70,13 +70,6 @@ export default function HR() {
   // Ensure employees is always an array
   const safeEmployees = Array.isArray(employees) ? employees : [];
   const safeProjects = Array.isArray(projects) ? projects : [];
-
-  const ym = (str) => {
-    if (!str) return "";
-    const d = new Date(str);
-    if (isNaN(d)) return "";
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  };
 
   // Helper to ensure assigned is always an array
   const ensureAssigned = (assigned) => {
@@ -92,7 +85,36 @@ export default function HR() {
     return [];
   };
 
+  const normalizeStatus = (status) => {
+    const raw = String(status || "").trim().toLowerCase();
+    if (!raw) return "";
+    if (raw === "complete" || raw === "completed" || raw === "done") return "completed";
+    if (raw === "revision" || raw === "revising") return "revision";
+    return raw;
+  };
+
   const stats = useMemo(() => {
+    const normalizeYearMonth = (value) => {
+      const raw = String(value || "").trim();
+      if (/^\d{4}-\d{2}$/.test(raw)) return raw;
+      if (/^\d{4}-\d{1}$/.test(raw)) {
+        const [year, month] = raw.split("-");
+        return `${year}-${month.padStart(2, "0")}`;
+      }
+      const parsed = toYearMonth(raw);
+      if (parsed) return parsed;
+      return toYearMonth(new Date().toISOString());
+    };
+    const selectedMonth = normalizeYearMonth(activeMonth);
+    const currentMonth = normalizeYearMonth(activeMonth);
+    const [selectedYear, selectedMonthNumber] = String(selectedMonth || "")
+      .split("-")
+      .map((part) => Number(part));
+    const parseOvertime = (value) => {
+      if (value === true || value === 1) return true;
+      const raw = String(value ?? "").trim().toLowerCase();
+      return raw === "true" || raw === "1" || raw === "yes";
+    };
     const map = new Map();
     // Initialize map with all employees - handle both camelCase and snake_case
     for (const emp of safeEmployees) {
@@ -102,6 +124,12 @@ export default function HR() {
         revisions: 0,
         payout: 0,
         payoutPKR: 0,
+        subscriptionHours: 0,
+        subscriptionAssignedBaseHours: 0,
+        subscriptionBasePayoutPKR: 0,
+        subscriptionExtraHours: 0,
+        subscriptionExtraPayoutPKR: 0,
+        subscriptionPayoutPKR: 0,
         quantity: 0,
         revisionQuantity: 0,
         service: null,
@@ -111,25 +139,14 @@ export default function HR() {
       // Skip archived projects (they're in archived_projects table, not active projects)
       if (p.archived === true) continue;
       
-      // Check if project was pulled forward
-      const isPulledForward = p.pulled_forward === true || p.pulledForward === true;
-      
-      // Get project's date month (prefer startDate for pulled-forward projects)
-      // When a project is pulled forward, its start_date is updated to the next month
-      const projectDate = isPulledForward ? (p.startDate || p.start_date) : (p.endDate || p.end_date || p.startDate || p.start_date);
-      const m = projectDate ? ym(projectDate) : month;
-      
-      // Include project if:
-      // 1. Its date matches the selected month, OR
-      // 2. It was pulled forward and we're viewing the current month (pulled-forward projects belong to current/new month)
-      const currentMonth = ym(new Date().toISOString());
-      const belongsToMonth = m === month || (isPulledForward && month === currentMonth);
-      
+      const belongsToMonth = belongsToBalanceMonth(p, selectedMonth, currentMonth);
+
       if (!belongsToMonth) continue;
+      if (normalizeStatus(p.status) !== "completed") continue;
       const assignedArray = ensureAssigned(p.assigned);
       const projectQuantity = Number(p.quantity) || 0;
       const revisionQty = Number(p.revisionQuantity) || 0;
-      const isRevision = p.isRevision || p.status === "Revision";
+      const isRevision = p.isRevision || normalizeStatus(p.status) === "revision";
       // For revisions, use revisionQuantity if available, otherwise use quantity
       const quantityToUse =
         isRevision && revisionQty > 0 ? revisionQty : projectQuantity;
@@ -152,6 +169,10 @@ export default function HR() {
           revisions: 0,
           payout: 0,
           payoutPKR: 0,
+          subscriptionHours: 0,
+          subscriptionExtraHours: 0,
+          subscriptionExtraPayoutPKR: 0,
+          subscriptionPayoutPKR: 0,
           quantity: 0,
           revisionQuantity: 0,
           service: null,
@@ -161,10 +182,141 @@ export default function HR() {
           revisions: prev.revisions + (isRevision ? 1 : 0),
           payout: prev.payout + costDisplay,
           payoutPKR: prev.payoutPKR + costPKR,
+          subscriptionHours: prev.subscriptionHours,
+        subscriptionAssignedBaseHours: prev.subscriptionAssignedBaseHours,
+          subscriptionExtraHours: prev.subscriptionExtraHours,
+          subscriptionExtraPayoutPKR: prev.subscriptionExtraPayoutPKR,
           quantity: prev.quantity + (isRevision ? 0 : projectQuantity), // Only add to quantity if not a revision
           revisionQuantity:
             prev.revisionQuantity + (isRevision ? quantityToUse : 0), // Add revision quantity for revisions
+          subscriptionPayoutPKR: prev.subscriptionPayoutPKR,
           service: p.service || prev.service,
+        });
+      }
+    }
+
+    const projectById = new Map(
+      safeProjects.map((p) => [String(p.id), p])
+    );
+    for (const entry of Array.isArray(timeEntries) ? timeEntries : []) {
+      const projectId = String(entry.projectId || entry.project_id || "");
+      const employeeId = String(entry.employeeId || entry.employee_id || "");
+      const project = projectById.get(projectId);
+      if (!project) continue;
+      if (String(project.billingModel || project.billing_model || "project") !== "subscription") continue;
+      const employee = safeEmployees.find((e) => String(e.id) === employeeId);
+      if (!employee) continue;
+      const entryDate = new Date(entry.entryDate || entry.entry_date || "");
+      const belongsToMonth = belongsToBalanceMonth(project, selectedMonth, currentMonth);
+      if (!belongsToMonth) {
+        if (Number.isNaN(entryDate.getTime())) continue;
+        const entryMonth = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, "0")}`;
+        if (entryMonth !== selectedMonth) continue;
+      }
+      const empName = employee.name || employee.employee_name || "Unknown Employee";
+      const hours = Number(entry.hours) || 0;
+      const isOvertime = parseOvertime(entry.isOvertime ?? entry.is_overtime);
+      const overtimeRate = Number(project.employeeExtraHourRatePkr || project.employee_extra_hour_rate_pkr || 0);
+      const includeInMonthlyPayout = normalizeStatus(project.status) === "completed";
+      const prev = map.get(empName) || {
+        projects: 0,
+        revisions: 0,
+        payout: 0,
+        payoutPKR: 0,
+        subscriptionHours: 0,
+        subscriptionAssignedBaseHours: 0,
+        subscriptionBasePayoutPKR: 0,
+        subscriptionExtraHours: 0,
+        subscriptionExtraPayoutPKR: 0,
+        subscriptionPayoutPKR: 0,
+        quantity: 0,
+        revisionQuantity: 0,
+        service: null,
+      };
+      map.set(empName, {
+        ...prev,
+        payoutPKR: prev.payoutPKR + (includeInMonthlyPayout && isOvertime ? (hours * overtimeRate) : 0),
+        subscriptionHours: prev.subscriptionHours + hours,
+        subscriptionAssignedBaseHours: prev.subscriptionAssignedBaseHours,
+        subscriptionBasePayoutPKR: prev.subscriptionBasePayoutPKR,
+        subscriptionExtraHours: prev.subscriptionExtraHours + (isOvertime ? hours : 0),
+        subscriptionExtraPayoutPKR: prev.subscriptionExtraPayoutPKR + (isOvertime ? (hours * overtimeRate) : 0),
+        subscriptionPayoutPKR: prev.subscriptionPayoutPKR + (isOvertime ? (hours * overtimeRate) : 0),
+      });
+    }
+
+    // Add subscription monthly base payout once per active subscription project.
+    // Priority: split among employees who logged time in that month; fallback to assigned names.
+    for (const project of safeProjects) {
+      if (project.archived === true) continue;
+      if (String(project.billingModel || project.billing_model || "project") !== "subscription") continue;
+      if (!selectedYear || !selectedMonthNumber) continue;
+      const belongsToMonth = belongsToBalanceMonth(project, selectedMonth, currentMonth);
+      const activeByDate = isProjectActiveInMonth(project, selectedYear, selectedMonthNumber);
+      if (!belongsToMonth && !activeByDate) continue;
+      const configuredBasePayoutPkr = Number(project.employeeMonthlyBasePayoutPkr || project.employee_monthly_base_payout_pkr || 0);
+      const fallbackBaseFromCustomerPkr = convert(
+        Number(project.monthlyBasePrice || project.monthly_base_price || project.amount || 0),
+        project.currency || "USD",
+        "PKR",
+        rate
+      );
+      const basePayoutPkr = configuredBasePayoutPkr > 0 ? configuredBasePayoutPkr : fallbackBaseFromCustomerPkr;
+      const includedHours = Number(project.monthlyIncludedHours || project.monthly_included_hours || 0);
+      if (basePayoutPkr <= 0) continue;
+      const projectId = String(project.id || "");
+      const entryEmployeeIds = new Set(
+        (Array.isArray(timeEntries) ? timeEntries : [])
+          .filter((entry) => {
+            const pid = String(entry.projectId || entry.project_id || "");
+            if (pid !== projectId) return false;
+            const d = new Date(entry.entryDate || entry.entry_date || "");
+            if (Number.isNaN(d.getTime())) return false;
+            const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+            return ym === selectedMonth;
+          })
+          .map((entry) => String(entry.employeeId || entry.employee_id || ""))
+          .filter(Boolean)
+      );
+
+      let recipients = [];
+      if (entryEmployeeIds.size > 0) {
+        recipients = safeEmployees
+          .filter((employee) => entryEmployeeIds.has(String(employee.id)))
+          .map((employee) => employee.name || employee.employee_name || "")
+          .filter(Boolean);
+      } else {
+        recipients = ensureAssigned(project.assigned)
+          .map((assigned) => assigned?.name || "")
+          .filter(Boolean);
+      }
+      if (!recipients.length) continue;
+
+      const perEmployeeBase = basePayoutPkr / recipients.length;
+      const perEmployeeBaseHours = includedHours > 0 ? (includedHours / recipients.length) : 0;
+      const includeInMonthlyPayout = normalizeStatus(project.status) === "completed";
+      for (const assignedName of recipients) {
+        const prev = map.get(assignedName) || {
+          projects: 0,
+          revisions: 0,
+          payout: 0,
+          payoutPKR: 0,
+          subscriptionHours: 0,
+          subscriptionAssignedBaseHours: 0,
+          subscriptionBasePayoutPKR: 0,
+          subscriptionExtraHours: 0,
+          subscriptionExtraPayoutPKR: 0,
+          subscriptionPayoutPKR: 0,
+          quantity: 0,
+          revisionQuantity: 0,
+          service: null,
+        };
+        map.set(assignedName, {
+          ...prev,
+          payoutPKR: prev.payoutPKR + (includeInMonthlyPayout ? perEmployeeBase : 0),
+          subscriptionAssignedBaseHours: prev.subscriptionAssignedBaseHours + perEmployeeBaseHours,
+          subscriptionBasePayoutPKR: prev.subscriptionBasePayoutPKR + perEmployeeBase,
+          subscriptionPayoutPKR: prev.subscriptionPayoutPKR + perEmployeeBase,
         });
       }
     }
@@ -197,6 +349,18 @@ export default function HR() {
         revisions: (map.get(empName) || { revisions: 0 }).revisions,
         payout: (map.get(empName) || { payout: 0 }).payout,
         payoutPKR: (map.get(empName) || { payoutPKR: 0 }).payoutPKR,
+        subscriptionHours: (map.get(empName) || { subscriptionHours: 0 }).subscriptionHours,
+        subscriptionBaseHours: (map.get(empName) || { subscriptionAssignedBaseHours: 0 }).subscriptionAssignedBaseHours,
+        subscriptionBasePayoutPKR: Math.max(
+          (map.get(empName) || { subscriptionBasePayoutPKR: 0 }).subscriptionBasePayoutPKR,
+          Math.max(
+            0,
+            (map.get(empName) || { subscriptionPayoutPKR: 0 }).subscriptionPayoutPKR -
+              (map.get(empName) || { subscriptionExtraPayoutPKR: 0 }).subscriptionExtraPayoutPKR
+          )
+        ),
+        subscriptionExtraHours: (map.get(empName) || { subscriptionExtraHours: 0 }).subscriptionExtraHours,
+        subscriptionExtraPayoutPKR: (map.get(empName) || { subscriptionExtraPayoutPKR: 0 }).subscriptionExtraPayoutPKR,
         quantity: (map.get(empName) || { quantity: 0 }).quantity,
         revisionQuantity: (map.get(empName) || { revisionQuantity: 0 })
           .revisionQuantity,
@@ -208,7 +372,7 @@ export default function HR() {
       rows.sort((a, b) => b.projects - a.projects);
     else rows.sort((a, b) => b.payout - a.payout);
     return rows;
-  }, [safeEmployees, safeProjects, month, currency, rate, sortKey]);
+  }, [safeEmployees, safeProjects, timeEntries, currency, rate, sortKey, activeMonth]);
 
   const displayed = useMemo(() => {
     const q = query.toLowerCase();
@@ -372,6 +536,34 @@ export default function HR() {
                 </div>
               )}
             </div>
+
+            {(r.subscriptionBaseHours > 0 || r.subscriptionExtraHours > 0 || r.subscriptionBasePayoutPKR > 0) && (
+              <div className='mb-4 p-3 rounded-xl bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/30'>
+                <div className='text-xs uppercase tracking-wide text-emerald-300 mb-2 font-semibold'>Subscription Hours</div>
+                <div className='grid grid-cols-4 gap-2 text-xs'>
+                  <div className='rounded-lg bg-slate-900/30 p-2'>
+                    <div className='text-slate-400'>Hours</div>
+                    <div className='text-white font-semibold'>{Number(r.subscriptionBaseHours || 0).toFixed(2)}</div>
+                  </div>
+                    <div className='rounded-lg bg-slate-900/30 p-2'>
+                      <div className='text-slate-400'>Base Pay</div>
+                      <div className='text-cyan-300 font-semibold'>
+                        {new Intl.NumberFormat("en", { maximumFractionDigits: 0 }).format(r.subscriptionBasePayoutPKR || 0)} PKR
+                      </div>
+                    </div>
+                    <div className='rounded-lg bg-slate-900/30 p-2'>
+                    <div className='text-slate-400'>Extra</div>
+                    <div className='text-amber-300 font-semibold'>{Number(r.subscriptionExtraHours || 0).toFixed(2)}</div>
+                  </div>
+                  <div className='rounded-lg bg-slate-900/30 p-2'>
+                    <div className='text-slate-400'>Extra Pay</div>
+                    <div className='text-emerald-300 font-semibold'>
+                      {new Intl.NumberFormat("en", { maximumFractionDigits: 0 }).format(r.subscriptionExtraPayoutPKR || 0)} PKR
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Stats Grid */}
             <div className='grid grid-cols-2 gap-3 mb-4'>

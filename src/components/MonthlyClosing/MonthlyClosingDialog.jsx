@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, AlertTriangle, Calendar, CheckCircle, Loader } from 'lucide-react';
-import { getCurrentMonthYear, getMonthLabel, closeMonth } from '../../utils/monthlyClosing.js';
+import { getClosableMonthYear, getMonthLabel, closeMonth } from '../../utils/monthlyClosing.js';
 import { useAppStore } from '../../stores/appStore.js';
 import ProjectReviewDialog from './ProjectReviewDialog.jsx';
 
 export default function MonthlyClosingDialog({ open, onClose, onSuccess }) {
-  const { user, currency, rate, refreshProjects, projects } = useAppStore();
+  const { user, currency, rate, refreshProjects, activeMonth, setActiveMonth } = useAppStore();
   const [step, setStep] = useState(1); // 1: confirmation, 2: review projects, 3: processing
   const [showReview, setShowReview] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState(null);
   const [closeResult, setCloseResult] = useState(null);
   
-  const current = getCurrentMonthYear();
+  const current = getClosableMonthYear(activeMonth);
   const monthLabel = getMonthLabel(current.year, current.month);
 
   const handleStartReview = () => {
@@ -33,6 +33,16 @@ export default function MonthlyClosingDialog({ open, onClose, onSuccess }) {
         rate,
         ...options
       });
+
+      // Move active month only after successful close/update.
+      try {
+        const nextMonth = current.month === 12
+          ? `${current.year + 1}-01`
+          : `${current.year}-${String(current.month + 1).padStart(2, '0')}`;
+        await setActiveMonth(nextMonth);
+      } catch (monthAdvanceError) {
+        console.warn('Failed to advance active month setting:', monthAdvanceError);
+      }
 
       // Store result for display
       setCloseResult(result);

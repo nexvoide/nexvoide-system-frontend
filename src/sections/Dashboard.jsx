@@ -25,10 +25,11 @@ import {
   useCanViewActivityLogs,
 } from "../hooks/useRoleFilter.js";
 import { ROLES, normalizeRoles, hasRole } from "../utils/permissions.js";
+import { belongsToBalanceMonth, toYearMonth } from "../utils/projectMonth.js";
 import Avatar from "../components/Avatar.jsx";
 
 export default function Dashboard() {
-  const { currency, rate, loading, activityLogs, loadActivityLogs, user, projects: allProjects, agencies: allAgencies, brands: allBrands, profiles: allProfiles, allUsers } =
+  const { currency, rate, loading, activityLogs, loadActivityLogs, user, projects: allProjects, agencies: allAgencies, brands: allBrands, profiles: allProfiles, allUsers, timeEntries, activeMonth } =
     useAppStore();
   const projects = useFilteredProjects(); // Use filtered projects based on role
   const employees = useFilteredEmployees(); // Use filtered employees based on role
@@ -707,6 +708,70 @@ export default function Dashboard() {
     return [];
   };
 
+  const normalizeYearMonth = (value) => {
+    const raw = String(value || "").trim();
+    if (/^\d{4}-\d{2}$/.test(raw)) return raw;
+    if (/^\d{4}-\d{1}$/.test(raw)) {
+      const [year, month] = raw.split("-");
+      return `${year}-${month.padStart(2, "0")}`;
+    }
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return "";
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  };
+
+  const getProjectEntriesForMonth = (projectId, monthKey) =>
+    (Array.isArray(timeEntries) ? timeEntries : []).filter((entry) => {
+      const entryProjectId = String(entry.projectId || entry.project_id || "");
+      if (entryProjectId !== String(projectId)) return false;
+      const normalizedMonth = normalizeYearMonth(monthKey);
+      if (!normalizedMonth) return true;
+      const d = new Date(entry.entryDate || entry.entry_date || "");
+      if (Number.isNaN(d.getTime())) return false;
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      return ym === normalizedMonth;
+    });
+
+  const getProjectFinancials = (p, cur, monthKey = activeMonth) => {
+    const billingModel = String(p.billingModel || p.billing_model || "project").toLowerCase();
+    const monthlyBaseRaw = Number(p.monthlyBasePrice || p.monthly_base_price || 0);
+    const includedRaw = Number(p.monthlyIncludedHours || p.monthly_included_hours || 0);
+    const isSubscriptionLike =
+      billingModel === "subscription" ||
+      monthlyBaseRaw > 0 ||
+      includedRaw > 0 ||
+      Number(p.subscriptionStartDate || p.subscription_start_date ? 1 : 0) > 0;
+    if (isSubscriptionLike) {
+      const monthlyBase = Number(p.monthlyBasePrice || p.monthly_base_price || p.amount || 0);
+      const customerExtraRate = Number(p.extraHourRate || p.extra_hour_rate || 0);
+      const employeeBasePayoutPkr = Number(p.employeeMonthlyBasePayoutPkr || p.employee_monthly_base_payout_pkr || 0);
+      const employeeExtraRatePkr = Number(p.employeeExtraHourRatePkr || p.employee_extra_hour_rate_pkr || 0);
+      const entries = getProjectEntriesForMonth(p.id, monthKey);
+      const included = Number(p.monthlyIncludedHours || p.monthly_included_hours || 0);
+      const usedHours = entries.reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0);
+      // Match invoice PDF behavior: customer charges based on total used hours.
+      const extraHours = usedHours;
+      const order = convert(monthlyBase + (extraHours * customerExtraRate), p.currency || "USD", cur, rate);
+      const emp = convert(employeeBasePayoutPkr + (extraHours * employeeExtraRatePkr), "PKR", cur, rate);
+      return { order, emp };
+    }
+    if (billingModel === "hourly") {
+      const hourlyRate = Number(p.extraHourRate || p.extra_hour_rate || 0);
+      const entries = getProjectEntriesForMonth(p.id, monthKey);
+      const usedHours = entries.reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0);
+      const order = convert(usedHours * hourlyRate, p.currency || "USD", cur, rate);
+      return { order, emp: 0 };
+    }
+    const order = convert(p.amount || 0, p.currency, cur, rate);
+    const assignedArray = ensureAssigned(p.assigned);
+    let emp = 0;
+    for (const a of assignedArray) {
+      if (a.costType === "percentage") emp += (order * (Number(a.costValue) || 0)) / 100;
+      else emp += convert(a.costValue || 0, "PKR", cur, rate);
+    }
+    return { order, emp };
+  };
+
   const totals = useMemo(() => {
     let totalRevenue = 0;
     let inProgressRevenue = 0;
@@ -720,14 +785,7 @@ export default function Dashboard() {
     for (const p of projects) {
       // Skip archived projects (they're in archived_projects table, not active projects)
       if (p.archived === true) continue;
-      const projectValue = convert(p.amount || 0, p.currency, currency, rate);
-      const assignedArray = ensureAssigned(p.assigned);
-      let employee = 0;
-      for (const a of assignedArray) {
-        if (a.costType === "percentage")
-          employee += (projectValue * (Number(a.costValue) || 0)) / 100;
-        else employee += convert(a.costValue || 0, "PKR", currency, rate);
-      }
+      const { order: projectValue, emp: employee } = getProjectFinancials(p, currency);
       const profit = projectValue - employee;
       totalRevenue += projectValue;
       if (p.status === "Completed") profitTotal += profit;
@@ -757,7 +815,7 @@ export default function Dashboard() {
       teamCostAll,
       profitTotal,
     };
-  }, [projects, currency, rate]);
+  }, [projects, currency, rate, timeEntries, activeMonth]);
 
   // Calculate employee earnings (for non-admin users)
   const employeeEarnings = useMemo(() => {
@@ -771,10 +829,19 @@ export default function Dashboard() {
     if (!userId) return 0;
     
     let totalEarnings = 0;
+    const currentMonth = activeMonth || toYearMonth(new Date().toISOString());
+    const isCompletedStatus = (status) => {
+      const normalized = String(status || "").trim().toLowerCase();
+      return normalized === "completed" || normalized === "complete" || normalized === "done";
+    };
     
     for (const p of projects) {
       // Skip archived projects (they're in archived_projects table, not active projects)
       if (p.archived === true) continue;
+      if (!isCompletedStatus(p.status)) continue;
+
+      const belongsToMonth = belongsToBalanceMonth(p, currentMonth, currentMonth);
+      if (!belongsToMonth) continue;
       
       const assignedArray = ensureAssigned(p.assigned);
       
@@ -786,7 +853,7 @@ export default function Dashboard() {
       });
       
       if (userAssignment) {
-        const projectValue = convert(p.amount || 0, p.currency, currency, rate);
+        const { order: projectValue } = getProjectFinancials(p, currency, currentMonth);
         let earnings = 0;
         
         if (userAssignment.costType === "percentage") {
@@ -800,7 +867,7 @@ export default function Dashboard() {
     }
     
     return totalEarnings;
-  }, [projects, user, currency, rate]);
+  }, [projects, user, currency, rate, activeMonth, timeEntries]);
 
   // Only keep Net Profit KPI (if user has permission to view finance details)
   const kpis = canViewFinanceDetails
@@ -896,7 +963,7 @@ export default function Dashboard() {
     return [
       {
         key: "myearnings",
-        label: "My Earnings",
+        label: "My Earnings (This Month)",
         value: employeeEarnings,
         icon: Wallet,
         color: "text-blue-400",
@@ -950,14 +1017,7 @@ export default function Dashboard() {
         profitTotal = 0;
       for (const p of profileProjects) {
         countTotal++;
-        const order = convert(p.amount || 0, p.currency, currency, rate);
-        const assignedArray = ensureAssigned(p.assigned);
-        let emp = 0;
-        for (const a of assignedArray) {
-          if (a.costType === "percentage")
-            emp += (order * (Number(a.costValue) || 0)) / 100;
-          else emp += convert(a.costValue || 0, "PKR", currency, rate);
-        }
+        const { order, emp } = getProjectFinancials(p, currency);
         const profit = order - emp;
         valueTotal += order;
         employeeCostTotal += emp;
@@ -988,7 +1048,7 @@ export default function Dashboard() {
       });
     }
     return Array.from(stats.values());
-  }, [profiles, projects, currency, rate]);
+  }, [profiles, projects, currency, rate, timeEntries, activeMonth]);
 
   const agencyStats = useMemo(() => {
     const stats = new Map();
@@ -1009,14 +1069,7 @@ export default function Dashboard() {
         profitTotal = 0;
       for (const p of agencyProjects) {
         countTotal++;
-        const order = convert(p.amount || 0, p.currency, currency, rate);
-        const assignedArray = ensureAssigned(p.assigned);
-        let emp = 0;
-        for (const a of assignedArray) {
-          if (a.costType === "percentage")
-            emp += (order * (Number(a.costValue) || 0)) / 100;
-          else emp += convert(a.costValue || 0, "PKR", currency, rate);
-        }
+        const { order, emp } = getProjectFinancials(p, currency);
         const profit = order - emp;
         valueTotal += order;
         employeeCostTotal += emp;
@@ -1047,7 +1100,7 @@ export default function Dashboard() {
       });
     }
     return Array.from(stats.values());
-  }, [agencies, projects, currency, rate]);
+  }, [agencies, projects, currency, rate, timeEntries, activeMonth]);
 
   const brandStats = useMemo(() => {
     const stats = new Map();
@@ -1068,14 +1121,7 @@ export default function Dashboard() {
         profitTotal = 0;
       for (const p of brandProjects) {
         countTotal++;
-        const order = convert(p.amount || 0, p.currency, currency, rate);
-        const assignedArray = ensureAssigned(p.assigned);
-        let emp = 0;
-        for (const a of assignedArray) {
-          if (a.costType === "percentage")
-            emp += (order * (Number(a.costValue) || 0)) / 100;
-          else emp += convert(a.costValue || 0, "PKR", currency, rate);
-        }
+        const { order, emp } = getProjectFinancials(p, currency);
         const profit = order - emp;
         valueTotal += order;
         employeeCostTotal += emp;
@@ -1106,7 +1152,7 @@ export default function Dashboard() {
       });
     }
     return Array.from(stats.values());
-  }, [brands, projects, currency, rate]);
+  }, [brands, projects, currency, rate, timeEntries, activeMonth]);
 
   const fmt = (n) =>
     new Intl.NumberFormat("en", {

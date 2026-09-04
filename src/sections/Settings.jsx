@@ -88,7 +88,7 @@ export default function SettingsSection() {
             <div className="mb-3">
               <label className="text-xs text-slate-500">Monthly Closing</label>
               <div className="text-xs text-slate-400 mt-1 mb-3">
-                Close the current month to archive completed projects and reset counters for the new month.
+                Close the previous month to archive completed projects and reset counters for the new month.
               </div>
             </div>
             <button
@@ -96,7 +96,7 @@ export default function SettingsSection() {
               className="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold transition-all flex items-center justify-center gap-2"
             >
               <Calendar size={18} />
-              Close Current Month
+              Close Previous Month
             </button>
             <div className="text-xs text-amber-400 mt-2 flex items-start gap-2">
               <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />

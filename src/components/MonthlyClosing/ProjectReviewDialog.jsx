@@ -24,7 +24,8 @@ export default function ProjectReviewDialog({
   const loadProjects = async () => {
     setLoading(true);
     try {
-      const monthProjects = await getProjectsForMonth(year, month);
+      // Review dialog should only show currently active projects for this month.
+      const monthProjects = await getProjectsForMonth(year, month, false);
       setProjects(monthProjects);
     } catch (error) {
       console.error('Error loading projects:', error);
